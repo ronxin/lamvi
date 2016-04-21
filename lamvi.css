@@ -1,0 +1,84 @@
+body {
+    margin: 0px;
+}
+
+header {
+    background-color: #517fa4;
+    color: white;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+header h1 {
+    font-size: 25px;
+    text-align: center;
+    margin-bottom: 20px;    
+}
+
+.body-main {
+    width: 1000px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 5px;
+}
+
+@media (min-width: 1180px) {
+    .body-main {
+        width: 1180px;
+    }
+}
+
+@media (min-width: 1400px) {
+    .body-main {
+        width: 1400px;
+    }
+}
+
+.column {
+    border: solid 1px gray;
+    float: left;
+    padding: 5px;
+}
+
+.column.config {
+    width: 25%;
+    background-color: #f7f7f7;
+}
+
+.column.network {
+    width: 50%;
+}
+
+.column.query {
+    width: 25%;
+    background-color: #f7f7f7;
+}
+
+textarea {
+    width: 100%;
+}
+
+.query button {
+    float: right;
+}
+
+.query .query-box-span {
+    display: block;
+    padding-right: 10px;
+    padding-left: 10px;
+    overflow: hidden;
+}
+
+.query .query-box {
+    width: 100%;
+}
+
+.query .query-box-label {
+    float: left;
+}
+
+.info-box {
+    margin-top: 3px;
+    margin-top: 3px;
+    border: 1px solid #517fa4;
+}
