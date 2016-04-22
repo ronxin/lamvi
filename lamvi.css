@@ -22,15 +22,15 @@ header h1 {
     margin-top: 5px;
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1200px) {
     .body-main {
-        width: 1180px;
+        width: 1150px;
     }
 }
 
 @media (min-width: 1400px) {
     .body-main {
-        width: 1400px;
+        width: 1350px;
     }
 }
 

@@ -9,33 +9,33 @@
   <header>
     <h1>lamvi - Language Model Visual Inspector</h1>
   </header>
-  
+
   <div class="body-main">
     <div class="column config">
       <div>
         <label>Config:</label>
         <textarea rows="5" id="config-text"></textarea>
       </div>
-      
+
       <div>
-        <label>Training Data:</label>
-        <textarea rows="5" id="config-text"></textarea>
+        <label>Training Data <br>(only first 1000 characters shown):</label>
+        <textarea rows="5" id="train-text"></textarea>
       </div>
-      
+
       <div>
         <label>Training Data Overview:</label>
         <div class="info-box" style="height: 100px; background: pink">
           TODO
         </div>
       </div>
-      
+
       <div>
         <label>Model Snapshots:</label>
         <p><select></select></p>
       </div>
-      
+
       <hr>
-      
+
       <div>
         <div><label>Control</label></div>
         <div class="btn-group">
@@ -46,9 +46,9 @@
           <button type="button" class="btn btn-success">Reset</button>
         </div>
       </div>
-      
+
       <hr>
-      
+
       <div>
         <div><label>Training Status</label></div>
         <div>
@@ -59,42 +59,42 @@
         </div>
       </div>
     </div>
-    
+
     <div class="column network">
       <div><label>Network Overview</label></div>
       <div class="info-box network-preview" style="height: 250px; background: pink">
         TODO
       </div>
-      
+
       <hr>
-      
+
       <div><label>Multifunctional Detailed Information Box</label></div>
       <div class="info-box detailed-info" style="height: 250px; background: pink">
         TODO
       </div>
     </div>
-    
-    
+
+
     <div class="column query">
       <div class="info-box">
         <label class="query-box-label">Query:</label>
-        <button class="btn btn-success">Update</button> 
-        <span class="query-box-span"><input type="text" class="query-box"></input></span> 
+        <button class="btn btn-success">Update</button>
+        <span class="query-box-span"><input type="text" class="query-box"></input></span>
       </div>
-      
+
       <div class="info-box">
         <div><label>Suggested Queries:</label></div>
         <div style="height: 100px; background: pink;">TODO</div>
       </div>
-      
+
       <div class="info-box">
         <div><label>Outputs:</label></div>
         <div style="height: 400px; background: pink;">TODO</div>
       </div>
-      
-    </div>  
+
+    </div>
   </div>
-  
+
   <script src="bundle.js"></script>
 </body>
 </html>
