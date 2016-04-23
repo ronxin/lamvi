@@ -23,18 +23,76 @@ limitations under the License.
 // The above reference is essential for d3 to be loaded via typings.
 
 import {
-  State,
+  UIState,
+  ModelConfig,
+  ModelState,
   getKeyFromValue,
 } from "./state";
+import handleRequest from "./toy_backend";
+import * as util from "./util";
 
-let state = State.deserializeState();
+let ui_state: UIState;
+let model_state: ModelState;
 
-function reset() {
-  state.serialize();
+function validateBackend() {
+  if (ui_state.backend == "browser") {
+    if (ui_state.model != 'word2vec') {
+      showError('Unrecognized model type: "' + ui_state.model + '".');
+    }
+  } else {
+    if (!util.isUrl(ui_state.backend)) {
+      showError('backend must be either "browser" or a valid URL. Currently specified to "' +
+                ui_state.backend + '".');
+    }
+  }
 }
 
+function sendRequestToBackend(type: string, request: {}, callback: (response: any)=>any) {
+  if (ui_state.backend == "browser") {
+    let response: any = handleRequest(type, request);
+    callback(response);
+  } else {
+    request['type'] = type;
+    $.getJSON(ui_state.backend, request, function(response: any) {
+      if (response.hasOwnProperty('error')) {
+        showError(response.error);
+      } else {
+        callback(response);
+      }
+    });
+  }
+}
+
+function reset() {
+  $(".top-error-banner").empty().hide();
+  ui_state = UIState.deserializeState();
+  ui_state.serialize();  // fold missing default values (if any) back to URL.
+  validateBackend();
+  init_ui();
+}
+
+function showError(message: string) {
+  console.log(message);
+  let new_error = '<p>' + message + '</p>';
+  $('.top-error-banner').append(new_error);
+  $('.top-error-banner').show();
+}
+
+// sends identify request and handles response
+function init_ui() {
+  let request = {};
+  if (ui_state.backend == "browser") {
+    request['model_type'] = ui_state.model;
+  }
+  sendRequestToBackend('identify', request, (response: any) => {
+    let model_state = <ModelState>response;
+    let model_config = model_state.config;
+    $('#config-text').html(JSON.stringify(model_config, null, ''));
+  });
+}
+
+window.addEventListener('hashchange', () => {
+  reset();
+})
+
 reset();
-
-// TODO: the next step is to set up a standard API: the frontend queries the
-// "backend" for config, and set up communication protocol.
-

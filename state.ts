@@ -19,6 +19,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+export class ModelConfig {
+  [key: string]: any;
+
+  // For network rendering
+  model_type: string;
+  hidden_size: number;  // word2vec only
+  hidden_sizes: number[];  // deep RNN
+  vocab_size: number;
+
+  data_overview_fields: string[];
+  train_overview_fields: string[];
+
+  default_query_in: string[];
+  default_query_out: string[];
+}
+
+export class ModelState {
+  [key: string]: any;
+
+  config: ModelConfig;
+  query_in: string[];
+  query_out: string[];
+}
+
 export function getKeyFromValue(obj: any, value: any): string {
   for (let key in obj) {
     if (obj[key] === value) {
@@ -26,10 +50,6 @@ export function getKeyFromValue(obj: any, value: any): string {
     }
   }
   return undefined;
-}
-
-function endsWith(s: string, suffix: string): boolean {
-  return s.substr(-suffix.length) === suffix;
 }
 
 /**
@@ -51,7 +71,7 @@ export interface Property {
   keyMap?: {[key: string]: any};
 };
 
-export class State {
+export class UIState {
   private static PROPS: Property[] = [
     {name: "model", type: Type.STRING},
     {name: "backend", type: Type.STRING}
@@ -64,13 +84,13 @@ export class State {
   /**
    * Deserializes the state from the url hash.
    */
-  static deserializeState(): State {
+  static deserializeState(): UIState {
     let map: {[key: string]: string} = {};
     for (let keyvalue of window.location.hash.slice(1).split("&")) {
       let [name, value] = keyvalue.split("=");
       map[name] = value;
     }
-    let state = new State();
+    let state = new UIState();
 
     function hasKey(name: string): boolean {
       return name in map && map[name] != null && map[name].trim() !== "";
@@ -81,7 +101,7 @@ export class State {
     }
 
     // Deserialize regular properties.
-    State.PROPS.forEach(({name, type, keyMap}) => {
+    UIState.PROPS.forEach(({name, type, keyMap}) => {
       switch (type) {
         case Type.OBJECT:
           if (keyMap == null) {
@@ -132,7 +152,7 @@ export class State {
   serialize() {
     // Serialize regular properties.
     let props: string[] = [];
-    State.PROPS.forEach(({name, type, keyMap}) => {
+    UIState.PROPS.forEach(({name, type, keyMap}) => {
       let value = this[name];
       // Don't serialize missing values.
       if (value == null) {
@@ -149,3 +169,4 @@ export class State {
     window.location.hash = props.join("&");
   }
 }
+
