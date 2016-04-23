@@ -22,17 +22,12 @@ limitations under the License.
 /// <reference path="typings/browser.d.ts" />
 // The above reference is essential for d3 to be loaded via typings.
 
-import {
-  UIState,
-  ModelConfig,
-  ModelState,
-  getKeyFromValue,
-} from "./state";
-import handleRequest from "./toy_backend";
+import {UIState} from "./ui_state";
+import {ModelState, ModelConfig} from './model_state';
+import handleRequest from "./toy_model_entry";
 import * as util from "./util";
 
 let ui_state: UIState;
-let model_state: ModelState;
 
 function validateBackend() {
   if (ui_state.backend == "browser") {
@@ -68,7 +63,7 @@ function reset() {
   ui_state = UIState.deserializeState();
   ui_state.serialize();  // fold missing default values (if any) back to URL.
   validateBackend();
-  init_ui();
+  identify_model();
 }
 
 function showError(message: string) {
@@ -78,17 +73,26 @@ function showError(message: string) {
   $('.top-error-banner').show();
 }
 
-// sends identify request and handles response
-function init_ui() {
-  let request = {};
-  if (ui_state.backend == "browser") {
-    request['model_type'] = ui_state.model;
-  }
+// sends "identify" request
+function identify_model() {
+  let request = {model_type: ui_state.model};
   sendRequestToBackend('identify', request, (response: any) => {
     let model_state = <ModelState>response;
-    let model_config = model_state.config;
-    $('#config-text').html(JSON.stringify(model_config, null, ''));
+    handleModelState(model_state);
   });
+}
+
+// depending on the model's returned model state, performs different frontend
+// tasks and sends different follow-up requests to model.
+function handleModelState(model_state: ModelState) {
+  let model_config = model_state.config;
+  switch (model_state.status) {
+    case 'WAIT_FOR_INIT':
+      $('#config-text').html(JSON.stringify(model_config, null, ''));
+      break;
+    default:
+      throw new Error('Unrecognized model status: "' + model_state.status + '"');
+  }
 }
 
 window.addEventListener('hashchange', () => {

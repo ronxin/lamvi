@@ -19,30 +19,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-export class ModelConfig {
-  [key: string]: any;
-
-  // For network rendering
-  model_type: string;
-  hidden_size: number;  // word2vec only
-  hidden_sizes: number[];  // deep RNN
-  vocab_size: number;
-
-  data_overview_fields: string[];
-  train_overview_fields: string[];
-
-  default_query_in: string[];
-  default_query_out: string[];
-}
-
-export class ModelState {
-  [key: string]: any;
-
-  config: ModelConfig;
-  query_in: string[];
-  query_out: string[];
-}
-
 export function getKeyFromValue(obj: any, value: any): string {
   for (let key in obj) {
     if (obj[key] === value) {
