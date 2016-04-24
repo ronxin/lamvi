@@ -15,8 +15,8 @@ class Word2vecConfig extends ModelConfig {
   iter: number = 20;
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
   train_overview_fields: string[] = ['trained_words', 'iterations', 'learning_rate', 'epochs'];
-  default_query_in: string[] = ['apple'];
-  default_query_out: string[] = ['orange'];
+  default_query_in: string[] = ['women'];
+  default_query_out: string[] = ['men'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
 };
 
@@ -25,6 +25,8 @@ class Word2vecState extends ModelState {
   vocab_size: number;
   num_sentences: number;
   corpus_size: number;  // total number of trainable words in the corpus
+
+  full_model_name = 'Word2Vec';
 }
 
 class VocabItem {
@@ -87,6 +89,10 @@ export class Word2vec implements ToyModel {
       case 'autocomplete':
         let term = <string>request['term'] || '';
         return this.autocomplete(term);
+
+      case 'validate_query_in':
+        let query_in = <string[]>request['query_in'] || [];
+        return this.validate_query_in(query_in);
 
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
@@ -179,5 +185,26 @@ export class Word2vec implements ToyModel {
       out = out.slice(0, 20);
     }
     return {'items': out};
+  }
+
+  private validate_query_in(query_in: string[]): {} {
+    if (! this.vocab) {
+      throw new Error('Must first build vocab before validating queries.');
+    }
+    let is_valid = true;
+    let message = '';
+    for (let query of query_in) {
+      if (util.startsWith(query, '-')) {
+        query = query.slice(1);
+      }
+      if (!(query in this.vocab)) {
+        is_valid = false;
+        if (message.length > 0) {
+          message += "<br>\n";
+        }
+        message += '"' + query + '" is not in vocabulary.';
+      }
+    }
+    return {is_valid: is_valid, message: message};
   }
 }

@@ -50,13 +50,16 @@ export interface Property {
 export class UIState {
   private static PROPS: Property[] = [
     {name: "model", type: Type.STRING},
-    {name: "backend", type: Type.STRING}
+    {name: "backend", type: Type.STRING},
+    {name: 'query_in', type: Type.ARRAY_STRING},
+    {name: 'query_out', type: Type.ARRAY_STRING}
   ];
 
   [key: string]: any;
   model = "word2vec";  // useful only when backend == 'browser'
   backend = "browser";
-
+  query_in: string[] = [];
+  query_out: string[] = [];
   /**
    * Deserializes the state from the url hash.
    */
@@ -146,3 +149,9 @@ export class UIState {
   }
 }
 
+// The properties here need not be synced via URL.
+// i.e., once the user refreshses the page, it's gone.
+export class UIStateHidden {
+  has_setup_query_column: boolean = false;
+  is_queryin_valid: boolean = false;
+}

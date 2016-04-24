@@ -24,4 +24,5 @@ export class ModelState {
   config: ModelConfig;
   query_in: string[];
   query_out: string[];
+  full_model_name: string;
 }

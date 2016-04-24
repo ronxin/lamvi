@@ -58,7 +58,7 @@
     </div>
 
     <div class="column network">
-      <div><label>Network Overview</label></div>
+      <div><label>Network Overview</label><span id="model-type"></span></div>
       <div class="info-box network-preview" style="height: 250px; background: pink">
         TODO
       </div>
@@ -71,16 +71,18 @@
       </div>
     </div>
 
-    <div class="column query">
+    <div class="column query" hidden>
       <div class="info-box">
         <div><label class="query-box-label">Query:</label></div>
+        <div id="query-in-error-message" hidden class="alert alert-danger"></div>
         <div><ul id="query-tags"></ul></div>
       </div>
 
-      <div class="info-box">
+      <!-- display high-perplexity queries -->
+      <!--<div class="info-box">
         <div><label>Suggested Queries:</label></div>
         <div style="height: 100px; background: pink;">TODO</div>
-      </div>
+      </div>-->
 
       <div class="info-box">
         <div><label>Outputs:</label></div>
