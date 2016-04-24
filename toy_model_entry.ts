@@ -11,8 +11,9 @@ let model: ToyModel = null;
 export default function handleRequest(request_type: string, request: {}): any {
   if (request_type == 'identify') {
     let model_type = request['model_type'];
+    let model_config = request['model_config'];
       if (model_type == 'word2vec') {
-        model = Word2vec.getDefaultModel();
+        model = new Word2vec(model_config);
       } else {
         throw new Error('Unrecognized model type: "' + model_type + '"');
       }

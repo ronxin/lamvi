@@ -15,19 +15,19 @@
     <div class="column config">
       <div>
         <label>Config:</label>
-        <textarea rows="5" id="config-text"></textarea>
+        <textarea rows="5" id="config-text">{}</textarea>
+        <button class="btn btn-primary" id="btn-update-restart">Update and Restart</button>
       </div>
 
       <div>
         <label>Training Data <br>(First 1000 characters):</label>
+        <div><a id="train-corpus-link" target="_blank" hidden>View Full Text</a></div>
         <textarea rows="5" id="train-text"></textarea>
       </div>
 
       <div>
         <label>Training Data Overview:</label>
-        <div class="info-box" style="height: 100px; background: pink">
-          TODO
-        </div>
+        <div class="info-box" id="train-data-overview"></div>
       </div>
 
       <div>
@@ -53,12 +53,7 @@
       <div>
         <div><label>Training Status</label></div>
         <div id="training-status"></div>
-        <div>
-          Iterations: 0<br>
-          Epochs: 0<br>
-          Learning Rate: 0<br>
-          Training Loss: 0<br>
-        </div>
+        <div class="info-box" id="train-status-overview"></div>
       </div>
     </div>
 
@@ -75,7 +70,6 @@
         TODO
       </div>
     </div>
-
 
     <div class="column query">
       <div class="info-box">

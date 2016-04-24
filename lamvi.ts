@@ -63,8 +63,8 @@ function reset() {
   ui_state = UIState.deserializeState();
   ui_state.serialize();  // fold missing default values (if any) back to URL.
   validateBackend();
-  identify_model();
   updateUIStatus("Identifying model...");
+  identify_model();
 }
 
 function showError(message: string) {
@@ -83,22 +83,46 @@ function handleModelState(model_state: ModelState) {
   let model_config = model_state.config;
   switch (model_state.status) {
     case 'WAIT_FOR_CORPUS':  // for in-browser models only
+      updateUIStatus('Loading corpus...');
       $.get(model_config.train_corpus_url, (corpus) => {
         if (corpus) {
           let corpus_preview: string = corpus.substr(0, 1000);
           $('#train-text').text(corpus_preview);
+          $("#train-corpus-link").attr('href', model_config.train_corpus_url).show();
           sendRequestToBackend('set_corpus', {'corpus': corpus}, handleModelState);
         } else {
           throw new Error('Failed to load corpus.');
         }
       });
-      updateUIStatus('Loading corpus...');
       break;
 
     case 'WAIT_FOR_INIT':
       $('#config-text').html(JSON.stringify(model_config, null, ''));
-      init_model();
       updateUIStatus('Building vocabulary and initializing model...');
+      init_model();
+      break;
+
+    case 'WAIT_FOR_TRAIN':
+      let data_overview_fields = model_config.data_overview_fields;
+      $('#train-data-overview').empty();
+      for (let field of data_overview_fields) {
+        if (model_state.hasOwnProperty(field)) {
+          let val = model_state[field];
+          $('#train-data-overview').append(
+            '<div><b>' + field + ':</b>&nbsp;'+ val + '</div>');
+        }
+      }
+
+      let train_overview_fields = model_config.train_overview_fields;
+      $('#train-status-overview').empty();
+      for (let field of train_overview_fields) {
+        if (model_state.hasOwnProperty(field)) {
+          let val = model_state[field];
+          $('#train-status-overview').append(
+            '<div><b>' + field + ':</b>&nbsp;'+ val + '</div>');
+        }
+      }
+
       break;
 
     default:
@@ -108,7 +132,15 @@ function handleModelState(model_state: ModelState) {
 
 // sends "identify" request
 function identify_model() {
-  let request = {model_type: ui_state.model};
+  let config_json = $('#config-text').val();
+  let config_obj = null;
+  try{
+    config_obj = JSON.parse(config_json);
+  } catch (e) {
+    showError("The model configuration JSON is not valid.");
+    return;
+  }
+  let request = {model_type: ui_state.model, model_config: config_obj};
   sendRequestToBackend('identify', request, (response: any) => {
     let model_state = <ModelState>response;
     handleModelState(model_state);
@@ -131,9 +163,8 @@ window.addEventListener('hashchange', () => {
   reset();
 })
 
+$('#btn-update-restart').click(() => {
+  reset();
+});
+
 reset();
-
-
-// TODO: github backup
-// TODO: add link to let the user view the full corpus.
-// TODO: do init generate training data overview

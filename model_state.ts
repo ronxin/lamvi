@@ -1,17 +1,24 @@
+/*
+Essential elements that are needed for common frontend rendering are
+included here. Different models should extend this class for storing details.
+*/
 export class ModelConfig {
-  // For network rendering
-  model_type: string;
   hidden_size: number;  // word2vec only
   hidden_sizes: number[];  // deep RNN
   train_corpus_url: string;
 
-  data_overview_fields: string[];
+  data_overview_fields: string[];  // fields of ModelState to be displayed.
   train_overview_fields: string[];
 
   default_query_in: string[];
   default_query_out: string[];
 }
 
+/*
+Contains the model's current training status, and the relevant info for the
+watched terms. This needs to be light-weight, as it is passed frequently from
+backend to frontend.
+*/
 export class ModelState {
   status: string;
   config: ModelConfig;
