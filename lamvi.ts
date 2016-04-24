@@ -64,6 +64,7 @@ function reset() {
   ui_state.serialize();  // fold missing default values (if any) back to URL.
   validateBackend();
   identify_model();
+  updateUIStatus("Identifying model...");
 }
 
 function showError(message: string) {
@@ -71,6 +72,38 @@ function showError(message: string) {
   let new_error = '<p>' + message + '</p>';
   $('.top-error-banner').append(new_error);
   $('.top-error-banner').show();
+}
+
+// depending on the model's returned model state, performs different frontend
+// tasks and sends different follow-up requests to model.
+function handleModelState(model_state: ModelState) {
+  if (!model_state) {
+    throw new Error('Empty model_state returned!');
+  }
+  let model_config = model_state.config;
+  switch (model_state.status) {
+    case 'WAIT_FOR_CORPUS':  // for in-browser models only
+      $.get(model_config.train_corpus_url, (corpus) => {
+        if (corpus) {
+          let corpus_preview: string = corpus.substr(0, 1000);
+          $('#train-text').text(corpus_preview);
+          sendRequestToBackend('set_corpus', {'corpus': corpus}, handleModelState);
+        } else {
+          throw new Error('Failed to load corpus.');
+        }
+      });
+      updateUIStatus('Loading corpus...');
+      break;
+
+    case 'WAIT_FOR_INIT':
+      $('#config-text').html(JSON.stringify(model_config, null, ''));
+      init_model();
+      updateUIStatus('Building vocabulary and initializing model...');
+      break;
+
+    default:
+      throw new Error('Unrecognized model status: "' + model_state.status + '"');
+  }
 }
 
 // sends "identify" request
@@ -82,17 +115,16 @@ function identify_model() {
   });
 }
 
-// depending on the model's returned model state, performs different frontend
-// tasks and sends different follow-up requests to model.
-function handleModelState(model_state: ModelState) {
-  let model_config = model_state.config;
-  switch (model_state.status) {
-    case 'WAIT_FOR_INIT':
-      $('#config-text').html(JSON.stringify(model_config, null, ''));
-      break;
-    default:
-      throw new Error('Unrecognized model status: "' + model_state.status + '"');
-  }
+// sends "init_model" request
+function init_model() {
+  sendRequestToBackend('init_model', {}, (response: any) => {
+    let model_state = <ModelState>response;
+    handleModelState(model_state);
+  });
+}
+
+function updateUIStatus(status: string): void {
+  $("#training-status").html(status);
 }
 
 window.addEventListener('hashchange', () => {
@@ -100,3 +132,8 @@ window.addEventListener('hashchange', () => {
 })
 
 reset();
+
+
+// TODO: github backup
+// TODO: add link to let the user view the full corpus.
+// TODO: do init generate training data overview

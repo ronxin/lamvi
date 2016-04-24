@@ -3,6 +3,7 @@ export class ModelConfig {
   model_type: string;
   hidden_size: number;  // word2vec only
   hidden_sizes: number[];  // deep RNN
+  train_corpus_url: string;
 
   data_overview_fields: string[];
   train_overview_fields: string[];

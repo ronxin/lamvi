@@ -1,6 +1,7 @@
 import {ModelConfig, ModelState} from "./model_state";
 import {ToyModel} from "./toy_model";
 
+
 class Word2vecConfig extends ModelConfig {
   model_type = 'word2vec';
   hidden_size: number = 10;
@@ -18,6 +19,7 @@ class Word2vecConfig extends ModelConfig {
   train_overview_fields: string[] = ['train_words', 'iterations'];
   default_query_in: string[] = ['apple'];
   default_query_out: string[] = ['orange'];
+  train_corpus_url: string = "/pg1342-tokenized.txt";
 };
 
 class Word2vecState extends ModelState {
@@ -33,11 +35,12 @@ export class Word2vec implements ToyModel {
   //    using min_alpha from then on.
   // 4. null_word is always 0.
   state: Word2vecState;
+  corpus: string;
 
   constructor() {
     this.state = new Word2vecState();
     this.state.config = new Word2vecConfig();
-    this.state.status = 'WAIT_FOR_INIT';
+    this.set_status('WAIT_FOR_CORPUS');
   }
 
   update_config(config: ModelConfig): void {
@@ -54,5 +57,28 @@ export class Word2vec implements ToyModel {
 
   static getDefaultModel(): Word2vec {
     return new Word2vec();
+  }
+
+  handle_request(request_type: string, request: {}): any {
+    switch (request_type) {
+      case 'identify':
+        throw new Error('"identify" should be handled by toy_model_entry.ts');
+
+      case 'set_corpus':
+        this.corpus = request['corpus'];
+        console.log("corpus length: " + this.corpus.length);
+        this.set_status('WAIT_FOR_INIT');
+        return this.get_state();
+
+      case 'init_model':
+        break;
+
+      default:
+        throw new Error('Unrecognized request type: "' + request_type + '"');
+    }
+  }
+
+  private set_status(status: string): void {
+    this.state.status = status;
   }
 }

@@ -5,10 +5,10 @@
   "private": true,
   "scripts": {
     "clean": "node node_modules/rimraf/bin.js dist/",
-    "prep": "typings install && node node_modules/mkdirp/bin/cmd.js dist && node node_modules/catw/bin/cmd.js -w false node_modules/jQuery/dist/jquery.min.js node_modules/bootstrap/dist/js/bootstrap.min.js node_modules/d3/d3.min.js -o dist/lib.js",
-    "build-css": "node node_modules/catw/bin/cmd.js -w false node_modules/bootstrap/dist/css/bootstrap.min.css lamvi.css -o dist/bundle.css",
+    "prep": "typings install && node node_modules/mkdirp/bin/cmd.js dist && cat node_modules/jQuery/dist/jquery.min.js node_modules/bootstrap/dist/js/bootstrap.min.js node_modules/d3/d3.min.js > dist/lib.js && cat pg1342-tokenized.txt > dist/pg1342-tokenized.txt",
+    "build-css": "cat node_modules/bootstrap/dist/css/bootstrap.min.css lamvi.css > dist/bundle.css",
     "watch-css": "node node_modules/catw/bin/cmd.js node_modules/bootstrap/dist/css/bootstrap.min.css lamvi.css -o dist/bundle.css",
-    "build-html": "node node_modules/catw/bin/cmd.js -w false index.html -o dist/index.html",
+    "build-html": "cat index.html > dist/index.html",
     "watch-html": "node node_modules/catw/bin/cmd.js index.html -o dist/index.html",
     "build-js": "browserify lamvi.ts -p [tsify] -v > dist/bundle.js",
     "watch-js": "watchify lamvi.ts -p [tsify] -v --debug -o dist/bundle.js",

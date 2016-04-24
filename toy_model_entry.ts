@@ -9,18 +9,15 @@ import {Word2vec} from "./toy_model_w2v";
 let model: ToyModel = null;
 
 export default function handleRequest(request_type: string, request: {}): any {
-  switch (request_type) {
-
-    case 'identify':
-      let model_type = request['model_type'];
+  if (request_type == 'identify') {
+    let model_type = request['model_type'];
       if (model_type == 'word2vec') {
         model = Word2vec.getDefaultModel();
       } else {
         throw new Error('Unrecognized model type: "' + model_type + '"');
       }
       return model.get_state();
-
-    default:
-      throw new Error('Unrecognized request type: "' + request_type + '"');
+  } else {
+    return model.handle_request(request_type, request);
   }
 }
