@@ -12,7 +12,7 @@ header {
 header h1 {
     font-size: 25px;
     text-align: center;
-    margin-bottom: 20px;    
+    margin-bottom: 20px;
 }
 
 .body-main {
@@ -56,29 +56,15 @@ header h1 {
 
 textarea {
     width: 100%;
-}
-
-.query button {
-    float: right;
-}
-
-.query .query-box-span {
-    display: block;
-    padding-right: 10px;
-    padding-left: 10px;
-    overflow: hidden;
-}
-
-.query .query-box {
-    width: 100%;
-}
-
-.query .query-box-label {
-    float: left;
+    resize: vertical;
 }
 
 .info-box {
     margin-top: 3px;
     margin-top: 3px;
     border: 1px solid #517fa4;
+}
+
+#query-tags > li {
+    color: black;
 }

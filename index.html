@@ -22,7 +22,7 @@
       <div>
         <label>Training Data <br>(First 1000 characters):</label>
         <div><a id="train-corpus-link" target="_blank" hidden>View Full Text</a></div>
-        <textarea rows="5" id="train-text"></textarea>
+        <textarea rows="5" id="train-text" readonly></textarea>
       </div>
 
       <div>
@@ -73,9 +73,8 @@
 
     <div class="column query">
       <div class="info-box">
-        <label class="query-box-label">Query:</label>
-        <button class="btn btn-success">Update</button>
-        <span class="query-box-span"><input type="text" class="query-box"></input></span>
+        <div><label class="query-box-label">Query:</label></div>
+        <div><ul id="query-tags"></ul></div>
       </div>
 
       <div class="info-box">

@@ -20,7 +20,7 @@ limitations under the License.
 */
 
 /// <reference path="typings/browser.d.ts" />
-// The above reference is essential for d3 to be loaded via typings.
+/// <reference path="tag-it.d.ts" />
 
 import {UIState} from "./ui_state";
 import {ModelState, ModelConfig} from './model_state';
@@ -159,12 +159,32 @@ function updateUIStatus(status: string): void {
   $("#training-status").html(status);
 }
 
+$('#query-tags').tagit({
+  autocomplete: {
+    source: (request: {}, response:any) => {
+      sendRequestToBackend('autocomplete', request, function(data: {}) {
+        if (data && data.hasOwnProperty('items')) {
+          response(data['items']);
+        } else {
+          response([]);
+        }
+      });
+    },
+    delay: 0,
+    minLength: 1
+  },
+  removeConfirmation: true,
+  allowDuplicates: true,
+  placeholderText: 'Type in query here'
+});
+
 window.addEventListener('hashchange', () => {
   reset();
-})
+});
 
 $('#btn-update-restart').click(() => {
   reset();
 });
 
 reset();
+

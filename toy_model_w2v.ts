@@ -1,6 +1,6 @@
 import {ModelConfig, ModelState} from "./model_state";
 import {ToyModel} from "./toy_model";
-
+import * as util from "./util";
 
 class Word2vecConfig extends ModelConfig {
   hidden_size: number = 10;
@@ -84,6 +84,10 @@ export class Word2vec implements ToyModel {
         this.set_status('WAIT_FOR_TRAIN');
         return this.get_state();
 
+      case 'autocomplete':
+        let term = <string>request['term'] || '';
+        return this.autocomplete(term);
+
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
     }
@@ -145,5 +149,35 @@ export class Word2vec implements ToyModel {
     this.state.num_sentences = this.sentences.length;
     this.state.vocab_size = this.index2word.length;
     this.state.corpus_size = total_words;
+  }
+
+  private autocomplete(term: string): {} {
+    let out = [];
+    if (this.index2word && term) {
+      let prefix = null;
+      let search_term = term;
+      if (util.startsWith(term, '-')) {
+        prefix = '-';
+        search_term = term.slice(1);
+      }
+      out = $.ui.autocomplete.filter(this.index2word, search_term);
+      // put those that start with the search term forward
+      let out_s: string[] = [];
+      let out_ns: string[] = [];
+      for (let w of out) {
+        if (util.startsWith(w, search_term)) {
+          out_s.push(w);
+        } else {
+          out_ns.push(w);
+        }
+      }
+      out = out_s.concat(out_ns);
+
+      if (prefix) {
+        out = $.map(out, (s:string) => {return prefix + s});
+      }
+      out = out.slice(0, 20);
+    }
+    return {'items': out};
   }
 }
