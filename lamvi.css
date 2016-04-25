@@ -46,11 +46,11 @@ header h1 {
 }
 
 .column.network {
-    width: 50%;
+    width: 40%;
 }
 
 .column.query {
-    width: 25%;
+    width: 35%;
     background-color: #f7f7f7;
 }
 
@@ -67,4 +67,28 @@ textarea {
 
 #query-tags > li {
     color: black;
+}
+
+.qo-idxbar-marker {
+    fill: blue;   /*placeholder for now;*/
+    opacity: 0.2;
+}
+
+.qo-idxbar-connector {
+    fill: blue;  /*placeholder for now;*/
+    stroke: grey;
+    stroke-width: 0.1;
+    opacity: 0.2;
+}
+
+.qo-rank-box, .qo-word-box, .qo-linechart-box {
+    fill: none;
+    stroke: grey;
+    stroke-width: 0.2;
+}
+
+.qo-linechart {
+    fill: none;
+    stroke: #555;
+    stroke-width: 0.5;
 }

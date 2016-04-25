@@ -24,5 +24,16 @@ export class ModelState {
   config: ModelConfig;
   query_in: string[];
   query_out: string[];
+  query_out_records: QueryOutRecord[];
   full_model_name: string;
+
+  // used to make query-out visualizations.
+  iterations: number;
+  num_possible_outputs: number;
+}
+
+export interface QueryOutRecord {
+  query: string;
+  rank: number;
+  rank_history: {rank: number, iteration: number}[];
 }

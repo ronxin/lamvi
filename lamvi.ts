@@ -23,12 +23,13 @@ limitations under the License.
 /// <reference path="tag-it.d.ts" />
 
 import {UIState, UIStateHidden} from "./ui_state";
-import {ModelState, ModelConfig} from './model_state';
+import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
 
 let ui_state: UIState;
-let ui_state_hidden: UIStateHidden = new UIStateHidden();;
+let ui_state_hidden: UIStateHidden;
+let model_state: ModelState;
 
 function validateBackend() {
   if (ui_state.backend == "browser") {
@@ -60,7 +61,6 @@ function sendRequestToBackend(type: string, request: {}, callback: (response: an
 }
 
 function reset() {
-  console.log('reset..');
   $(".top-error-banner").empty().hide();
   $('.column.query').hide();
   ui_state_hidden = new UIStateHidden();  // repopulate with default value.
@@ -83,9 +83,9 @@ function showError(message: string) {
 
 // depending on the model's returned model state, performs different frontend
 // tasks and sends different follow-up requests to model.
-function handleModelState(model_state: ModelState) {
+function handleModelState() {
   if (!model_state) {
-    throw new Error('Empty model_state returned!');
+    throw new Error('Empty model_state!');
   }
   let model_config = model_state.config;
   switch (model_state.status) {
@@ -138,6 +138,22 @@ function handleModelState(model_state: ModelState) {
         ui_state_hidden.has_setup_query_column = true;
         setupQueryColumn(model_config);
       }
+      // For debug only
+      model_state.num_possible_outputs = 1000;
+      model_state.iterations = 10;
+      model_state.query_out_records = [
+        {query: 'foo', rank: 0,
+         rank_history: [{rank:1,iteration:1},{rank:5,iteration:2},{rank:2, iteration:10}]},
+        {query: 'bar', rank: 1,
+         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
+        {query: 'baz', rank: 2,
+         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
+        {query: 'baz1', rank: 100,
+         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
+        {query: 'baz2', rank: 200,
+         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
+      ];
+      updateQueryOutSVG();
 
       break;
 
@@ -158,16 +174,16 @@ function identify_model() {
   }
   let request = { model_type: ui_state.model, model_config: config_obj };
   sendRequestToBackend('identify', request, (response: any) => {
-    let model_state = <ModelState>response;
-    handleModelState(model_state);
+    model_state = <ModelState>response;
+    handleModelState();
   });
 }
 
 // sends "init_model" request
 function init_model() {
   sendRequestToBackend('init_model', {}, (response: any) => {
-    let model_state = <ModelState>response;
-    handleModelState(model_state);
+    model_state = <ModelState>response;
+    handleModelState();
   });
 }
 
@@ -195,10 +211,13 @@ function updateQueryIn(event, ui): void {
   );
 }
 
+const query_out_svg_width = 100;  // view box, not physical
+const query_out_svg_height = 125;  // view box, not physical
 // First-time intializing query column.
 function setupQueryColumn(model_config: ModelConfig): void {
   $('.column.query').show();
 
+  // Set up query-in viewer
   $('#query-in-container')
     .empty()
     .append('<ul id="query-in-tags"></ul>');
@@ -230,6 +249,196 @@ function setupQueryColumn(model_config: ModelConfig): void {
     afterTagAdded: updateQueryIn,
     afterTagRemoved: updateQueryIn
   });
+
+  // Set up query-out viewer
+  d3.select('#query-out-container > *').remove();
+  let svg = d3.select('#query-out-container')
+    .append('div')
+    .classed('query-out', true)
+    .append('svg')
+    .attr('height', '500')
+    .attr('width', '100%')
+    .attr('viewBox', '0 0 ' + query_out_svg_width + ' ' + query_out_svg_height)
+    .attr('preserveAspectRatio', "none");
+
+  ui_state_hidden.qo_svg = svg;
+
+  // Adding a colored background for debugging
+  // svg.append('rect')
+  //   .attr('width', '100%')
+  //   .attr('height', '100%')
+  //   .attr('fill', '#E8E8EE');
+
+  // Draw left index bar
+  svg.append('rect')
+    .attr('x', 1)
+    .attr('y', 0)
+    .attr('width', 3)
+    .attr('height', query_out_svg_height)
+    .attr('fill', 'lightgrey');
+}
+
+
+function updateQueryOutSVG() {
+  // Compute layout
+  const default_item_height = 6;
+  const default_item_pad = 0.8;
+  const default_gap = 5;
+  const word_box_width = 35;
+  const linechart_width = 30;
+
+  if (! model_state.query_out_records) {
+    throw new Error("model_state.query_out_records is not populated.");
+  }
+
+  if (model_state.num_possible_outputs <= 0) {
+    throw new Error("model_state.num_possible_outputs must be positive");
+  }
+
+  if (typeof model_state.iterations == undefined) {
+    throw new Error('model_state.iterations must be set.');
+  }
+
+  model_state.query_out_records.sort((a, b) => {
+    return a.rank - b.rank;
+  });
+  let y = 0;
+  let last_rank = -1;
+  for (let q of model_state.query_out_records) {
+    q['y'] = (q.rank == last_rank + 1) ? y : y + default_gap;
+    y = q['y'] + default_item_height + default_item_pad;
+    last_rank = q.rank;
+
+    q['y_idxbar'] = query_out_svg_height * q.rank / model_state.num_possible_outputs;
+
+  }
+
+  let item_height = default_item_height;
+  if (y > query_out_svg_height) {
+    let shrink_factor = query_out_svg_height / y;
+    item_height *= shrink_factor;
+    for (let q of model_state.query_out_records) {
+      q['y'] *= shrink_factor;
+    }
+  }
+
+  // Preprocess linechart data
+  let linechart_maxY = 0;
+  for (let q of model_state.query_out_records) {
+    let max = Math.max.apply(null, $.map(q.rank_history, x=>x.rank));
+    linechart_maxY = Math.max(linechart_maxY, max);
+  }
+  let linechart_xScale = d3.scale.linear()
+    .domain([0, model_state.iterations - 1])
+    .range([0, linechart_width]);
+  let linechart_yScale = d3.scale.linear()
+    .domain([0, linechart_maxY])
+    .range([0, item_height]);
+
+  // Redraw SVG.
+  // See enter-update-exit pattern: https://bl.ocks.org/mbostock/3808218
+  let svg = ui_state_hidden.qo_svg;
+  let record_objs_ = svg.selectAll('g')
+    .data(model_state.query_out_records);
+  record_objs_.exit().remove();
+  let record_objs = record_objs_.enter()
+    .append('g');
+
+  // Draw marker on index bar
+  record_objs.append('rect')
+    .attr('x', 0)
+    .attr('y', (d)=>{return d['y_idxbar']})
+    .attr('width', 5)
+    .attr('height', 1)
+    .classed('qo-idxbar-marker', true);
+
+  // Draw lines between index bar and items
+  record_objs.append('path')
+    .attr('d', (d) => {
+      return 'M 5 ' + d['y_idxbar']
+        + ' C 7.5 ' + d['y_idxbar']
+        + '   7.5 ' + d['y']
+        + '   10  ' + d['y']
+        + ' L 10  ' + (d['y'] + item_height)
+        + ' C 7.5 ' + (d['y'] + item_height)
+        + '   7.5 ' + (d['y_idxbar'] + 1)
+        + '   5   ' + (d['y_idxbar'] + 1);
+    })
+    .classed('qo-idxbar-connector', true);
+
+  // Draw rank boxes.
+  let rank_boxes = record_objs.append('g')
+    .attr('transform', (d) => {
+      return 'translate(10,'+d['y']+')';
+    });
+  rank_boxes.append('rect')
+    .attr('width', '10')
+    .attr('height', item_height)
+    .classed('qo-rank-box', true);
+
+  rank_boxes.append('text')
+    .text((d) => {return '#' + (d.rank + 1)})
+    .style('font-size', function (d) {
+      // Must not use fat-arrow functions here, otherwise the "this" below
+      // will not be correctly captured.
+      return Math.min(4, 10 / this.getComputedTextLength() * 10) + 'px';
+    })
+    .attr('text-anchor', 'middle')
+    .attr('alignment-baseline', 'central')
+    .attr('dx', '5px')
+    .attr('dy', (item_height/2) + 'px');
+
+  // Draw word boxes.
+  let word_boxes = record_objs.append('g')
+    .attr('transform', (d) => {
+      return 'translate(20,'+d['y']+')';
+    });
+  word_boxes.append('rect')
+    .attr('width', word_box_width)
+    .attr('height', item_height)
+    .classed('qo-word-box', true);
+
+  word_boxes.append('text')
+    .text((d) => {return d.query})
+    .style('font-size', function (d) {
+      // Must not use fat-arrow functions here, otherwise the "this" below
+      // will not be correctly captured.
+      return Math.min(3.5, 10 / this.getComputedTextLength() * 12) + 'px';
+    })
+    .attr('text-anchor', 'middle')
+    .attr('alignment-baseline', 'central')
+    .attr('dx', word_box_width / 2)
+    .attr('dy', (item_height/2) + 'px');
+
+  // Draw rank histories line-charts.
+  let linecharts = record_objs.append('g')
+    .attr('transform', (d) => `translate(55, ${d['y']})`);
+
+  linecharts.append('rect')
+    .attr('width', linechart_width)
+    .attr('height', item_height)
+    .classed('qo-linechart-box', true);
+
+  linecharts.append('path')
+    .classed('qo-linechart', true)
+    .datum(d => d.rank_history)
+    .attr('d', d3.svg.line<{rank:number,iteration:number}>()
+      .x(d => linechart_xScale(d.iteration - 1))
+      .y(d => linechart_yScale(d.rank)));
+
+  // Draw control icons
+  const thumb_up = '&#128077;';
+  const thumb_down = '&#128078;';
+  const waste_bascket = '&#128465;';
+  let control_icons = record_objs.append('g')
+    .attr('transform', d=>`translate(85, ${d['y']})`);
+  control_icons.append('text')
+    .html(`${thumb_up} ${thumb_down} ${waste_bascket}`)
+    .style('font-size', function(d) {
+      return Math.min(5, 10 / this.getComputedTextLength() * 18) + 'px';
+    })
+    .attr('alignment-baseline', 'middle')
+    .attr('dy', item_height / 2);
 }
 
 window.addEventListener('hashchange', () => {

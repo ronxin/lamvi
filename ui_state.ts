@@ -155,4 +155,5 @@ export class UIStateHidden {
   has_setup_query_column: boolean = false;
   is_queryin_valid: boolean = false;
   should_not_reset_on_hashchange: boolean = false;  // effective once only
+  qo_svg: d3.Selection<any>;  // query-out svg
 }
