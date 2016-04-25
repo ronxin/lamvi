@@ -60,6 +60,7 @@ function sendRequestToBackend(type: string, request: {}, callback: (response: an
 }
 
 function reset() {
+  console.log('reset..');
   $(".top-error-banner").empty().hide();
   $('.column.query').hide();
   ui_state_hidden = new UIStateHidden();  // repopulate with default value.
@@ -134,8 +135,8 @@ function handleModelState(model_state: ModelState) {
 
       // Display queries
       if (!ui_state_hidden.has_setup_query_column) {
-        setupQueryColumn(model_config);
         ui_state_hidden.has_setup_query_column = true;
+        setupQueryColumn(model_config);
       }
 
       break;
@@ -175,8 +176,9 @@ function updateUIStatus(status: string): void {
 }
 
 // Update and validate query_in
-function updateQueryIn(): void {
-  ui_state.query_in = $('#query-tags').tagit('assignedTags');
+function updateQueryIn(event, ui): void {
+  if (ui.duringInitialization) return;
+  ui_state.query_in = $('#query-in-tags').tagit('assignedTags');
   sendRequestToBackend('validate_query_in', {query_in: ui_state.query_in},
     (response) => {
       let is_valid = response['is_valid'];
@@ -186,6 +188,8 @@ function updateQueryIn(): void {
         $('#query-in-error-message').html(message).show();
       } else {
         $('#query-in-error-message').hide();
+        ui_state_hidden.should_not_reset_on_hashchange = true;
+        ui_state.serialize();
       }
     }
   );
@@ -195,7 +199,18 @@ function updateQueryIn(): void {
 function setupQueryColumn(model_config: ModelConfig): void {
   $('.column.query').show();
 
-  $('#query-tags').tagit({
+  $('#query-in-container')
+    .empty()
+    .append('<ul id="query-in-tags"></ul>');
+
+  if (ui_state.query_in.length == 0) {
+    ui_state.query_in = model_config.default_query_in;
+  }
+  for (let query of ui_state.query_in) {
+    $("#query-in-tags").append('<li>' + query + '</li>');
+  }
+
+  $('#query-in-tags').tagit({
     autocomplete: {
       source: (request: {}, response: any) => {
         sendRequestToBackend('autocomplete', request, function (data: {}) {
@@ -215,17 +230,14 @@ function setupQueryColumn(model_config: ModelConfig): void {
     afterTagAdded: updateQueryIn,
     afterTagRemoved: updateQueryIn
   });
-
-  if (ui_state.query_in.length == 0) {
-    ui_state.query_in = model_config.default_query_in;
-  }
-  for (let query of ui_state.query_in) {
-    $("#query-tags").tagit('createTag', query);
-  }
 }
 
 window.addEventListener('hashchange', () => {
-  reset();
+  if (ui_state_hidden.should_not_reset_on_hashchange) {
+    ui_state_hidden.should_not_reset_on_hashchange = false;
+  } else {
+    reset();
+  }
 });
 
 $('#btn-update-restart').click(() => {
