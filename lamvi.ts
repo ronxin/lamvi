@@ -63,7 +63,7 @@ function sendRequestToBackend(type: string, request: {}, callback: (response: an
 
 function reset() {
   $(".top-error-banner").empty().hide();
-  $('.column.query').hide();
+  // $('.column.query').hide();
   ui_state_hidden = new UIStateHidden();  // repopulate with default value.
 
   ui_state = UIState.deserializeState();
@@ -141,6 +141,7 @@ function handleModelState() {
         updateQueryOutResult();
       }
       // For debug only
+      /*
       model_state.num_possible_outputs = 1000;
       model_state.iterations = 10;
       model_state.query_out_records = [
@@ -155,6 +156,7 @@ function handleModelState() {
         {query: 'baz2', rank: 101, status: 'NORMAL',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
       ];
+      */
 
       updateQueryOutSVG();
       break;
@@ -206,7 +208,7 @@ function updateQueryIn(event, ui): void {
         $('#query-in-error-message').html(message).show();
       } else {
         $('#query-in-error-message').hide();
-        ui_state_hidden.should_not_reset_on_hashchange = true;
+        ui_state_hidden.skip_reset_on_hashchange = true;
         ui_state.serialize();
         updateQueryOutResult();
       }
@@ -257,11 +259,12 @@ function updateUIStateQueryOut(): void {
   let query_out: string[] = [];
   for (let record of model_state.query_out_records) {
     let prefix = record.status[0];
+    if (prefix == 'N') continue;
     let query = record.query;
     query_out.push(`${prefix}_${query}`);
   }
   ui_state.query_out = query_out;
-  ui_state_hidden.should_not_reset_on_hashchange = false;
+  ui_state_hidden.skip_reset_on_hashchange = true;
   ui_state.serialize();
 }
 
@@ -280,7 +283,7 @@ const query_out_svg_height = 100;  // view box, not physical
 
 // First-time intializing query column.
 function setupQueryColumn(model_config: ModelConfig): void {
-  $('.column.query').show();
+  // $('.column.query').show();
 
   // Default queries
   if (ui_state.query_in.length == 0) {
@@ -289,7 +292,7 @@ function setupQueryColumn(model_config: ModelConfig): void {
   if (ui_state.query_out.length == 0) {
     ui_state.query_out = model_config.default_query_out;
   }
-  ui_state_hidden.should_not_reset_on_hashchange = true;
+  ui_state_hidden.skip_reset_on_hashchange = true;
   ui_state.serialize();
 
   // Set up query-in viewer
@@ -483,7 +486,7 @@ function updateQueryOutSVG() {
     .style('font-size', function (d) {
       // Must not use fat-arrow functions here, otherwise the "this" below
       // will not be correctly captured.
-      return Math.min(3.5, 10 / this.getComputedTextLength() * 12) + 'px';
+      return Math.min(3, 55 / this.getComputedTextLength() * 5) + 'px';
     })
     .attr('text-anchor', 'middle')
     .attr('alignment-baseline', 'central')
@@ -541,6 +544,7 @@ function updateQueryOutSVG() {
       } else if (d.name == 'waste_bascket') {
         record.status = 'IGNORED';
       }
+      updateUIStateQueryOut();
       updateQueryOutSVG();
     });
 
@@ -554,8 +558,8 @@ function updateQueryOutSVG() {
 }
 
 window.addEventListener('hashchange', () => {
-  if (ui_state_hidden.should_not_reset_on_hashchange) {
-    ui_state_hidden.should_not_reset_on_hashchange = false;
+  if (ui_state_hidden.skip_reset_on_hashchange) {
+    ui_state_hidden.skip_reset_on_hashchange = false;
   } else {
     reset();
   }

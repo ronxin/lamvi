@@ -32,7 +32,7 @@ export class ModelState {
 
 export interface QueryOutRecord {
   query: string;
-  rank: number;
-  rank_history: {rank: number, iteration: number}[];
+  rank?: number;  // 0-indexed
+  rank_history?: {rank: number, iteration: number}[];
   status: string;
 }
