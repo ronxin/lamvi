@@ -457,6 +457,7 @@ function updateQueryOutSVG() {
     .html(d=>d.svg)
     .attr('class', d=>`qo-control-icon ${d.name}`)
     .attr('transform', d=>`rotate(${d.rotate}) translate(${d.translate}) scale(0.035)`)
+    .attr('title', d=>d.title)
     .on('click', function(d) {
       let record = <QueryOutRecord>d3.select(this.parentNode.parentNode).datum();
       if ((record.status == 'GOOD' && d.name == 'thumb_up' )
@@ -471,7 +472,13 @@ function updateQueryOutSVG() {
       }
       updateQueryOutSVG();
     });
-  control_icons.append('title').text(d=>d.title);
+
+  let selection: any = $(".qo-control-icon");  // overrides typescript checking.
+  selection.tooltip({
+    'container': 'body',
+    'placement': 'bottom'
+  });
+  $('.tooltip').remove();
 }
 
 window.addEventListener('hashchange', () => {
