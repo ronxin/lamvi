@@ -143,15 +143,15 @@ function handleModelState() {
       model_state.num_possible_outputs = 1000;
       model_state.iterations = 10;
       model_state.query_out_records = [
-        {query: 'foo', rank: 0,
+        {query: 'foo', rank: 0, status: 'GOOD',
          rank_history: [{rank:1,iteration:1},{rank:5,iteration:2},{rank:2, iteration:10}]},
-        {query: 'bar', rank: 1,
+        {query: 'bar', rank: 1, status: 'TOP',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz', rank: 2,
+        {query: 'baz', rank: 2, status: 'BAD',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz1', rank: 100,
+        {query: 'baz1', rank: 100, status: 'WATCHED',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz2', rank: 200,
+        {query: 'baz2', rank: 101, status: 'NEIGHBOR',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
       ];
       updateQueryOutSVG();
@@ -335,14 +335,16 @@ function updateQueryOutSVG() {
     .domain([0, linechart_maxY])
     .range([0, item_height]);
 
-  // Redraw SVG.
+  // ----------------------
+  // Draw query-out items.
   // See enter-update-exit pattern: https://bl.ocks.org/mbostock/3808218
   let svg = ui_state_hidden.qo_svg;
   let record_objs_ = svg.selectAll('g')
     .data(model_state.query_out_records);
   record_objs_.exit().remove();
   let record_objs = record_objs_.enter()
-    .append('g');
+    .append('g')
+    .attr('class', d=> `qo-item ${d.status}`);
 
   // Draw marker on index bar
   record_objs.append('rect')
@@ -374,6 +376,7 @@ function updateQueryOutSVG() {
   rank_boxes.append('rect')
     .attr('width', '10')
     .attr('height', item_height)
+    .classed('qo-box', true)
     .classed('qo-rank-box', true);
 
   rank_boxes.append('text')
@@ -396,6 +399,7 @@ function updateQueryOutSVG() {
   word_boxes.append('rect')
     .attr('width', word_box_width)
     .attr('height', item_height)
+    .classed('qo-box', true)
     .classed('qo-word-box', true);
 
   word_boxes.append('text')
@@ -417,6 +421,7 @@ function updateQueryOutSVG() {
   linecharts.append('rect')
     .attr('width', linechart_width)
     .attr('height', item_height)
+    .classed('qo-box', true)
     .classed('qo-linechart-box', true);
 
   linecharts.append('path')
@@ -440,7 +445,12 @@ function updateQueryOutSVG() {
     .append('g')
     .html(d=>d.svg)
     .attr('class', d=>`qo-control-icon ${d.name}`)
-    .attr('transform', d=>`rotate(${d.rotate}) translate(${d.translate}) scale(0.035)`);
+    .attr('transform', d=>`rotate(${d.rotate}) translate(${d.translate}) scale(0.035)`)
+    .classed('checked', function(d) {
+      let status = d3.select(this.parentNode.parentNode).datum().status;
+      return (status == 'GOOD' && d.name == 'thumb_up')
+              || (status == 'BAD' && d.name == 'thumb_down');
+    });
 }
 
 window.addEventListener('hashchange', () => {

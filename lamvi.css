@@ -70,29 +70,76 @@ textarea {
 }
 
 .qo-idxbar-marker {
-    fill: blue;   /*placeholder for now;*/
-    opacity: 0.2;
+    opacity: 0.6;
 }
 
 .qo-idxbar-connector {
-    fill: blue;  /*placeholder for now;*/
     stroke: grey;
     stroke-width: 0.1;
-    opacity: 0.2;
+    opacity: 0.6;
 }
 
-.qo-rank-box, .qo-word-box, .qo-linechart-box {
-    fill: none;
+.qo-box {
     stroke: grey;
     stroke-width: 0.2;
+}
+
+.qo-item.GOOD .qo-box {
+    stroke: #1b7a5a;
+    stroke-width: 0.3;
+}
+
+.qo-item.BAD .qo-box {
+    stroke: #7b3220;
+    stroke-width: 0.3;
+}
+
+.qo-item.WATCHED .qo-box {
+    stroke: #406582;
+    stroke-width: 0.3;
+}
+
+.qo-control-icon {
+    cursor: pointer;
+    fill: transparent;
+    stroke-width: 2px;
+    stroke: #333;
+}
+
+.qo-item {
+    fill: #eee;
+}
+
+.qo-item text {
+    fill: #777;
+}
+
+.qo-item.GOOD, .qo-control-icon.thumb_up:hover, .qo-control-icon.thumb_up.checked {
+    fill: #24A479;
+}
+
+.qo-item.BAD, .qo-control-icon.thumb_down:hover, .qo-control-icon.thumb_down.checked {
+    fill: #A4422A;
+}
+
+.qo-item.WATCHED {
+    fill: #517fa4;
+}
+
+.qo-item.GOOD text, .qo-item.BAD text, .qo-item.WATCHED text {
+    fill: white;
+}
+
+.qo-control-icon.waste_bascket:hover {
+    fill: #333;
+}
+
+.qo-linechart-box {
+    fill: #eee;
 }
 
 .qo-linechart {
     fill: none;
     stroke: #555;
     stroke-width: 0.5;
-}
-
-.qo-control-icon {
-    cursor: pointer;
 }
