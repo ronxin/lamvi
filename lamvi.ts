@@ -26,6 +26,7 @@ import {UIState, UIStateHidden} from "./ui_state";
 import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
+import * as icons from "./icons.ts";
 
 let ui_state: UIState;
 let ui_state_hidden: UIStateHidden;
@@ -212,7 +213,7 @@ function updateQueryIn(event, ui): void {
 }
 
 const query_out_svg_width = 100;  // view box, not physical
-const query_out_svg_height = 125;  // view box, not physical
+const query_out_svg_height = 100;  // view box, not physical
 // First-time intializing query column.
 function setupQueryColumn(model_config: ModelConfig): void {
   $('.column.query').show();
@@ -256,10 +257,9 @@ function setupQueryColumn(model_config: ModelConfig): void {
     .append('div')
     .classed('query-out', true)
     .append('svg')
-    .attr('height', '500')
     .attr('width', '100%')
     .attr('viewBox', '0 0 ' + query_out_svg_width + ' ' + query_out_svg_height)
-    .attr('preserveAspectRatio', "none");
+    .attr('preserveAspectRatio', "xMinYMin");
 
   ui_state_hidden.qo_svg = svg;
 
@@ -427,18 +427,20 @@ function updateQueryOutSVG() {
       .y(d => linechart_yScale(d.rank)));
 
   // Draw control icons
-  const thumb_up = '&#128077;';
-  const thumb_down = '&#128078;';
-  const waste_bascket = '&#128465;';
+  const control_icon_data = [
+    {'name': 'thumb_up', 'svg': icons.thumb_up, 'rotate': 0, 'translate': '1,1'},
+    {'name': 'thumb_down', 'svg': icons.thumb_up, 'rotate': 180, 'translate': '-8.75,-5'},
+    {'name': 'waste_bascket', 'svg': icons.waste_bascket, 'rotate': 0, 'translate': '10,1'},
+  ]
   let control_icons = record_objs.append('g')
-    .attr('transform', d=>`translate(85, ${d['y']})`);
-  control_icons.append('text')
-    .html(`${thumb_up} ${thumb_down} ${waste_bascket}`)
-    .style('font-size', function(d) {
-      return Math.min(5, 10 / this.getComputedTextLength() * 18) + 'px';
-    })
-    .attr('alignment-baseline', 'middle')
-    .attr('dy', item_height / 2);
+    .attr('transform', d=>`translate(85, ${d['y']})`)
+    .selectAll('g')
+    .data(control_icon_data)
+    .enter()
+    .append('g')
+    .html(d=>d.svg)
+    .attr('class', d=>`qo-control-icon ${d.name}`)
+    .attr('transform', d=>`rotate(${d.rotate}) translate(${d.translate}) scale(0.035)`);
 }
 
 window.addEventListener('hashchange', () => {

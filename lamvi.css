@@ -92,3 +92,7 @@ textarea {
     stroke: #555;
     stroke-width: 0.5;
 }
+
+.qo-control-icon {
+    cursor: pointer;
+}
