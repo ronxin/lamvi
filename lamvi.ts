@@ -476,7 +476,8 @@ function updateQueryOutSVG() {
   let selection: any = $(".qo-control-icon");  // overrides typescript checking.
   selection.tooltip({
     'container': 'body',
-    'placement': 'bottom'
+    'placement': 'bottom',
+    'delay': 300
   });
   $('.tooltip').remove();
 }
