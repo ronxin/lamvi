@@ -22,8 +22,6 @@ backend to frontend.
 export class ModelState {
   status: string;
   config: ModelConfig;
-  query_in: string[];
-  query_out: string[];
   query_out_records: QueryOutRecord[];
   full_model_name: string;
 

@@ -86,10 +86,13 @@
 
       <div class="info-box">
         <div><label>Outputs:</label></div>
-        <div id="query-out-container"></div>
         <div>
+          <div id="query-out-error-message" hidden class="alert alert-danger"></div>
           <input id="query-out-search"></input>&nbsp;&nbsp;
-          <button class="btn btn-success">Add to Watchlist</button></div>
+          <button class="btn btn-success" id="btn-add-to-watchlist">Add to Watchlist</button>
+        </div>
+        <br>
+        <div id="query-out-container"></div>
       </div>
 
     </div>

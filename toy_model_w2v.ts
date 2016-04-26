@@ -16,7 +16,7 @@ class Word2vecConfig extends ModelConfig {
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
   train_overview_fields: string[] = ['trained_words', 'iterations', 'learning_rate', 'epochs'];
   default_query_in: string[] = ['women'];
-  default_query_out: string[] = ['men'];
+  default_query_out: string[] = ['G_men'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
 };
 
@@ -90,10 +90,25 @@ export class Word2vec implements ToyModel {
         let term = <string>request['term'] || '';
         return this.autocomplete(term);
 
-      case 'validate_query_in':
+      case 'validate_query_in':  // this contains all query terms in query_in
+       {
         let query_in = <string[]>request['query_in'] || [];
         return this.validate_query_in(query_in);
+       }
 
+      case 'validate_query_out':  // this is a single query_out item only
+       {
+        let query_out = <string>request['query_out'];
+        return this.validate_query_out(query_out);
+       }
+
+      case 'update_query_out_result':
+       {
+        let query_in = <string[]>request['query_in'] || [];
+        let query_out = <string[]>request['query_out'] || [];
+        this.compute_query_out_result();
+        return this.get_state();
+       }
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
     }
@@ -206,5 +221,24 @@ export class Word2vec implements ToyModel {
       }
     }
     return {is_valid: is_valid, message: message};
+  }
+
+  private validate_query_out(query: string): {} {
+    if (! this.vocab) {
+      throw new Error('Must first build vocab before validating queries.');
+    }
+    let is_valid = true;
+    let message = '';
+    if (! (query in this.vocab)) {
+      is_valid = false;
+      message = `"${query}" is not in vocabulary.`;
+    }
+    return {is_valid: is_valid, message: message};
+  }
+
+  private compute_query_out_result() {
+    // Check query_in with query_in_map
+    // Compute ranking
+    // Update new query_out records (pay attention not to make iterations duplicated in query_history)
   }
 }

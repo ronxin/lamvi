@@ -136,8 +136,9 @@ function handleModelState() {
 
       // Display queries
       if (!ui_state_hidden.has_setup_query_column) {
-        ui_state_hidden.has_setup_query_column = true;
-        setupQueryColumn(model_config);
+        ui_state_hidden.has_setup_query_column = true;  // has to be called first!
+        setupQueryColumn(model_config);  // this will apply default queries if there are none
+        updateQueryOutResult();
       }
       // For debug only
       model_state.num_possible_outputs = 1000;
@@ -154,8 +155,8 @@ function handleModelState() {
         {query: 'baz2', rank: 101, status: 'NORMAL',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
       ];
-      updateQueryOutSVG();
 
+      updateQueryOutSVG();
       break;
 
     default:
@@ -207,25 +208,95 @@ function updateQueryIn(event, ui): void {
         $('#query-in-error-message').hide();
         ui_state_hidden.should_not_reset_on_hashchange = true;
         ui_state.serialize();
+        updateQueryOutResult();
       }
     }
   );
 }
 
+function searchQueryOut(query: string): void {
+  $('#query-out-error-message').hide();
+  if (query.length == 0) return;
+  sendRequestToBackend('validate_query_out', {query_out: query},
+    response => {
+      let is_valid = response['is_valid'];
+      if (!is_valid) {
+        let message = response['message'];
+        $('#query-out-error-message').html(message).show();
+      } else {
+        let already_shown = false;
+        for (let record of model_state.query_out_records) {
+          if (record.query != query) continue;
+          if (record.status == 'IGNORED' || record.status == 'NORMAL') {
+            record.status = 'WATCHED';
+            already_shown = true;
+          }
+        }
+
+        if (already_shown) {
+          updateUIStateQueryOut();  // update the URL
+          updateQueryOutSVG();  // update SVG.
+        } else {
+          model_state.query_out_records.push({
+            query: query, status: 'WATCHED',
+            rank: -1, rank_history:[]});
+          updateUIStateQueryOut();  // update the URL
+          updateQueryOutResult();  // goes to model and internally calls SVG update.
+        }
+      }
+    }
+  );
+}
+
+// The frontend uses model_state.query_out_records to keep track of status for
+// convenience. But that information cannot be used to communicate with backend.
+// This function converts the query and status information stored in
+// model_state.query_out_records into ui_state.query_out, which can be be sent
+// to the backend via request.
+function updateUIStateQueryOut(): void {
+  let query_out: string[] = [];
+  for (let record of model_state.query_out_records) {
+    let prefix = record.status[0];
+    let query = record.query;
+    query_out.push(`${prefix}_${query}`);
+  }
+  ui_state.query_out = query_out;
+  ui_state_hidden.should_not_reset_on_hashchange = false;
+  ui_state.serialize();
+}
+
+// Sends request to backend.
+function updateQueryOutResult(): void {
+  sendRequestToBackend('update_query_out_result',
+    {query_in: ui_state.query_in, query_out: ui_state.query_out},
+     (response:{}) => {
+       model_state = <ModelState>response;
+       handleModelState();
+    });
+}
+
 const query_out_svg_width = 100;  // view box, not physical
 const query_out_svg_height = 100;  // view box, not physical
+
 // First-time intializing query column.
 function setupQueryColumn(model_config: ModelConfig): void {
   $('.column.query').show();
+
+  // Default queries
+  if (ui_state.query_in.length == 0) {
+    ui_state.query_in = model_config.default_query_in;
+  }
+  if (ui_state.query_out.length == 0) {
+    ui_state.query_out = model_config.default_query_out;
+  }
+  ui_state_hidden.should_not_reset_on_hashchange = true;
+  ui_state.serialize();
 
   // Set up query-in viewer
   $('#query-in-container')
     .empty()
     .append('<ul id="query-in-tags"></ul>');
 
-  if (ui_state.query_in.length == 0) {
-    ui_state.query_in = model_config.default_query_in;
-  }
   for (let query of ui_state.query_in) {
     $("#query-in-tags").append('<li>' + query + '</li>');
   }
@@ -490,8 +561,27 @@ window.addEventListener('hashchange', () => {
   }
 });
 
+$('#query-out-search').autocomplete({
+  source: (request: {}, response: any) => {
+    sendRequestToBackend('autocomplete', request, function (data: {}) {
+      if (data && data.hasOwnProperty('items')) {
+        response(data['items']);
+      } else {
+        response([]);
+      }
+    });
+  },
+  delay: 0,
+  minLength: 1,
+});
+
 $('#btn-update-restart').click(() => {
   reset();
+});
+
+$('#btn-add-to-watchlist').click(() => {
+  let qo = $('#query-out-search').val();
+  searchQueryOut(qo);
 });
 
 reset();
