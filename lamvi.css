@@ -114,11 +114,11 @@ textarea {
     fill: #777;
 }
 
-.qo-item.GOOD, .qo-control-icon.thumb_up:hover, .qo-control-icon.thumb_up.checked {
+.qo-item.GOOD, .qo-control-icon.thumb_up:hover, .qo-item.GOOD .qo-control-icon.thumb_up {
     fill: #24A479;
 }
 
-.qo-item.BAD, .qo-control-icon.thumb_down:hover, .qo-control-icon.thumb_down.checked {
+.qo-item.BAD, .qo-control-icon.thumb_down:hover, .qo-item.BAD .qo-control-icon.thumb_down {
     fill: #A4422A;
 }
 

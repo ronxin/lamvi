@@ -145,13 +145,13 @@ function handleModelState() {
       model_state.query_out_records = [
         {query: 'foo', rank: 0, status: 'GOOD',
          rank_history: [{rank:1,iteration:1},{rank:5,iteration:2},{rank:2, iteration:10}]},
-        {query: 'bar', rank: 1, status: 'TOP',
+        {query: 'bar', rank: 1, status: 'NORMAL',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
         {query: 'baz', rank: 2, status: 'BAD',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
         {query: 'baz1', rank: 100, status: 'WATCHED',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz2', rank: 101, status: 'NEIGHBOR',
+        {query: 'baz2', rank: 101, status: 'NORMAL',
          rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
       ];
       updateQueryOutSVG();
@@ -290,6 +290,8 @@ function updateQueryOutSVG() {
   if (! model_state.query_out_records) {
     throw new Error("model_state.query_out_records is not populated.");
   }
+  let query_out_records = model_state.query_out_records;
+  query_out_records = query_out_records.filter(d => d.status != 'IGNORED');
 
   if (model_state.num_possible_outputs <= 0) {
     throw new Error("model_state.num_possible_outputs must be positive");
@@ -299,12 +301,12 @@ function updateQueryOutSVG() {
     throw new Error('model_state.iterations must be set.');
   }
 
-  model_state.query_out_records.sort((a, b) => {
+  query_out_records.sort((a, b) => {
     return a.rank - b.rank;
   });
   let y = 0;
   let last_rank = -1;
-  for (let q of model_state.query_out_records) {
+  for (let q of query_out_records) {
     q['y'] = (q.rank == last_rank + 1) ? y : y + default_gap;
     y = q['y'] + default_item_height + default_item_pad;
     last_rank = q.rank;
@@ -317,14 +319,14 @@ function updateQueryOutSVG() {
   if (y > query_out_svg_height) {
     let shrink_factor = query_out_svg_height / y;
     item_height *= shrink_factor;
-    for (let q of model_state.query_out_records) {
+    for (let q of query_out_records) {
       q['y'] *= shrink_factor;
     }
   }
 
   // Preprocess linechart data
   let linechart_maxY = 0;
-  for (let q of model_state.query_out_records) {
+  for (let q of query_out_records) {
     let max = Math.max.apply(null, $.map(q.rank_history, x=>x.rank));
     linechart_maxY = Math.max(linechart_maxY, max);
   }
@@ -338,13 +340,16 @@ function updateQueryOutSVG() {
   // ----------------------
   // Draw query-out items.
   // See enter-update-exit pattern: https://bl.ocks.org/mbostock/3808218
+  // UPDATE: Not using the enter-update-exit pattern. Just redrawing everything
+  // per each update.
   let svg = ui_state_hidden.qo_svg;
-  let record_objs_ = svg.selectAll('g')
-    .data(model_state.query_out_records);
-  record_objs_.exit().remove();
-  let record_objs = record_objs_.enter()
+  svg.selectAll('g').remove();
+  let record_objs = svg.selectAll('g')
+    .data(query_out_records, d=>d.query)
+    .enter()
     .append('g')
-    .attr('class', d=> `qo-item ${d.status}`);
+    .attr('class', d => `qo-item ${d.status}`);
+
 
   // Draw marker on index bar
   record_objs.append('rect')
@@ -433,9 +438,15 @@ function updateQueryOutSVG() {
 
   // Draw control icons
   const control_icon_data = [
-    {'name': 'thumb_up', 'svg': icons.thumb_up, 'rotate': 0, 'translate': '1,1'},
-    {'name': 'thumb_down', 'svg': icons.thumb_up, 'rotate': 180, 'translate': '-8.75,-5'},
-    {'name': 'waste_bascket', 'svg': icons.waste_bascket, 'rotate': 0, 'translate': '10,1'},
+    {'name': 'thumb_up', 'svg': icons.thumb_up,
+     'rotate': 0, 'translate': '1,1',
+     'title': 'label/unlabel as good output'},
+    {'name': 'thumb_down', 'svg': icons.thumb_up,
+     'rotate': 180, 'translate': '-8.75,-5',
+     'title': 'label/unlabel as bad output'},
+    {'name': 'waste_bascket', 'svg': icons.waste_bascket,
+     'rotate': 0, 'translate': '10,1',
+     'title': 'ignore this output'},
   ]
   let control_icons = record_objs.append('g')
     .attr('transform', d=>`translate(85, ${d['y']})`)
@@ -446,11 +457,21 @@ function updateQueryOutSVG() {
     .html(d=>d.svg)
     .attr('class', d=>`qo-control-icon ${d.name}`)
     .attr('transform', d=>`rotate(${d.rotate}) translate(${d.translate}) scale(0.035)`)
-    .classed('checked', function(d) {
-      let status = d3.select(this.parentNode.parentNode).datum().status;
-      return (status == 'GOOD' && d.name == 'thumb_up')
-              || (status == 'BAD' && d.name == 'thumb_down');
+    .on('click', function(d) {
+      let record = <QueryOutRecord>d3.select(this.parentNode.parentNode).datum();
+      if ((record.status == 'GOOD' && d.name == 'thumb_up' )
+          || (record.status == 'BAD' && d.name == 'thumb_down')) {
+        record.status = 'NORMAL';
+      } else if (d.name == 'thumb_up') {
+        record.status = 'GOOD';
+      } else if (d.name == 'thumb_down') {
+        record.status = 'BAD';
+      } else if (d.name == 'waste_bascket') {
+        record.status = 'IGNORED';
+      }
+      updateQueryOutSVG();
     });
+  control_icons.append('title').text(d=>d.title);
 }
 
 window.addEventListener('hashchange', () => {
