@@ -1,8 +1,13 @@
 let next_random: number = 1;
 
+// An integer between 0 and 65535 (inclusive)
 export function get_random(): number {
   next_random = (next_random * 25214903917 + 11) & 0xffff;
   return next_random;
+}
+
+export function get_random_float(): number {
+  return get_random() / 0xffff;
 }
 
 export function seed_random(seed: number): void {

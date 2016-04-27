@@ -28,7 +28,7 @@ export class ModelState {
   full_model_name: string;
 
   // used to make query-out visualizations.
-  iterations: number;
+  instances: number;
   num_possible_outputs: number;
 }
 

@@ -31,6 +31,7 @@ import * as icons from "./icons.ts";
 let ui_state: UIState;
 let ui_state_hidden: UIStateHidden;
 let model_state: ModelState;
+let train_init_timeout: number;
 
 function validateBackend() {
   if (ui_state.backend == "browser") {
@@ -81,6 +82,7 @@ function reset() {
       $(this).html('Start');
       ui_state_hidden.is_to_pause_training = true;
       updateUIStatus('Pausing training...');
+      // window.clearTimeout(train_init_timeout);
     }
     else if (!ui_state_hidden.is_model_busy_training
         && model_state
@@ -88,7 +90,7 @@ function reset() {
             || model_state.status == 'USER_BREAK')) {
       $(this).html('Pause');
       updateUIStatus('Training...');
-      setTimeout(()=>{batch_train(-1, false);}, 50);
+      train_init_timeout = setTimeout(() => {batch_train(-1, false);}, 150);
     }
   });
   $('#btn-next').click(function() {
@@ -97,7 +99,7 @@ function reset() {
         && (model_state.status == 'WAIT_FOR_TRAIN'
             || model_state.status == 'USER_BREAK')) {
       updateUIStatus('Training until hitting next watched item...');
-      setTimeout(()=>{batch_train(1, true);},50);
+      train_init_timeout = setTimeout(()=>{batch_train(1, true);}, 150);
     }
   });
   $('#btn-reset').click(reset);
@@ -125,7 +127,6 @@ function handleModelState() {
   let model_config = model_state.config;
 
   if (model_state.status == 'AUTO_BREAK' && ui_state_hidden.is_to_pause_training) {
-    ui_state_hidden.is_to_pause_training = false;
     model_state.status = 'USER_BREAK';
   }
 
@@ -165,7 +166,7 @@ function handleModelState() {
       break
 
     case 'AUTO_BREAK':
-      setTimeout(resume_training, 150);
+      train_init_timeout = setTimeout(resume_training, 150);
       display_training_status_overview();
       updateQueryOutSVG();
       break;
@@ -312,10 +313,14 @@ function updateUIStateQueryOut(): void {
 // Sends request to backend.
 function updateQueryOutResult(): void {
   sendRequestToBackend('update_query_out_result',
-    {query_in: ui_state.query_in, query_out: ui_state.query_out},
-     (response:{}) => {
-       model_state = <ModelState>response;
-       handleModelState();
+    {
+      query_in: ui_state.query_in,
+      query_out: ui_state.query_out,
+      status: model_state.status  // for consistency
+    },
+    (response:{}) => {
+      model_state = <ModelState>response;
+      handleModelState();
     });
 }
 
@@ -412,7 +417,7 @@ function updateQueryOutSVG() {
     throw new Error("model_state.num_possible_outputs must be positive");
   }
 
-  if (typeof model_state.iterations == undefined) {
+  if (typeof model_state.instances == undefined) {
     throw new Error('model_state.iterations must be set.');
   }
 
@@ -446,7 +451,7 @@ function updateQueryOutSVG() {
     linechart_maxY = Math.max(linechart_maxY, max);
   }
   let linechart_xScale = d3.scale.linear()
-    .domain([0, model_state.iterations])
+    .domain([0, model_state.instances])
     .range([linechart_width*0.025, linechart_width*0.975]);
   let linechart_yScale = d3.scale.linear()
     .domain([0, linechart_maxY])
@@ -600,6 +605,7 @@ function updateQueryOutSVG() {
 
 function batch_train(iterations: number, watched: boolean): void {
   ui_state_hidden.is_model_busy_training = true;
+  ui_state_hidden.is_to_pause_training = false;
   sendRequestToBackend('train',
     {iterations: iterations, watched: watched},
     handleModelState
@@ -607,8 +613,13 @@ function batch_train(iterations: number, watched: boolean): void {
 }
 
 function resume_training(): void {
-  ui_state_hidden.is_model_busy_training = true;
-  sendRequestToBackend('train-continue', {}, handleModelState);
+  if (ui_state_hidden.is_to_pause_training) {
+    updateUIStatus('Training paused.');
+    model_state.status = 'USER_BREAK';
+  } else {
+    ui_state_hidden.is_model_busy_training = true;
+    sendRequestToBackend('train-continue', {}, handleModelState);
+  }
 }
 
 window.addEventListener('hashchange', () => {

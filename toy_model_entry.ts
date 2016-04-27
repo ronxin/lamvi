@@ -10,6 +10,7 @@ let model: ToyModel = null;
 
 export default function handleRequest(request_type: string, request: {}): any {
   if (request_type == 'identify') {
+    model = null;
     let model_type = request['model_type'];
     let model_config = request['model_config'];
       if (model_type == 'word2vec') {

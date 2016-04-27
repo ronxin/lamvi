@@ -1,23 +1,27 @@
 import {ModelConfig, ModelState, QueryOutRecord} from "./model_state";
 import {ToyModel} from "./toy_model";
 import * as util from "./util";
-import {get_random, get_random_init_weight} from "./random";
+import {get_random_float, get_random_init_weight} from "./random";
+
+// for negative sampling
+const power = 0.75;
+const cum_table_domain = 2147483647;  // 2^31 - 1
 
 class Word2vecConfig extends ModelConfig {
   hidden_size: number = 10;
-  alpha: number = 0.2;
+  alpha: number = 0.1;
   window: number = 3;
   min_count: number = 2;
   seed: number = 1;
-  min_alpha: number = 0.001;
-  sg: boolean = false;
+  min_alpha: number = 0.01;
+  sg: boolean = true;
   negative: number = 5;
   cbow_mean: boolean = true;
   iter: number = 20;
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
-  train_overview_fields: string[] = ['trained_words', 'iterations', 'learning_rate', 'epochs'];
-  default_query_in: string[] = ['women'];
-  default_query_out: string[] = ['W_men'];
+  train_overview_fields: string[] = ['instances', 'epochs', 'learning_rate'];
+  default_query_in: string[] = ['looked'];
+  default_query_out: string[] = ['W_listened'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
   report_interval_microseconds: number = 250;
 };
@@ -27,6 +31,10 @@ class Word2vecState extends ModelState {
   vocab_size: number;
   num_sentences: number;
   corpus_size: number;  // total number of trainable words in the corpus
+
+  sentences: number;
+  epochs: number;
+  learning_rate: number;
 
   full_model_name = 'Word2Vec';
 }
@@ -61,6 +69,7 @@ export class Word2vec implements ToyModel {
 
   syn0: number[][];
   syn1: number[][];
+  cum_table: number[];  // cumultative distribution table for negative sampling.
 
   // Some cached arrays that should be initialized only once to potentially save
   // some time.
@@ -134,7 +143,7 @@ export class Word2vec implements ToyModel {
         this.breakpoint_time = Date.now() + this.state.config.report_interval_microseconds;
         if (requested_iterations > 0) {
           if (watched) this.breakpoint_instances_watched = this.count_instances_watched + requested_iterations;
-          else this.breakpoint_iterations = this.state.iterations + requested_iterations;
+          else this.breakpoint_iterations = this.state.instances + requested_iterations;
         }
         this.train_until_breakpoint();
         return this.get_state();
@@ -201,6 +210,20 @@ export class Word2vec implements ToyModel {
       total_words += this.vocab[word].count;
     }
 
+    // init cumultative distribution table for negative sampling
+    let train_words_pow = 0;
+    let vocab_size = this.index2word.length;
+    this.cum_table = [];
+    for (let i = 0; i < vocab_size; i++) this.cum_table.push(0);
+    for (let i = 0; i < vocab_size; i++) {
+      train_words_pow += Math.pow(this.vocab[this.index2word[i]].count, power);
+    }
+    let cumultative: number = 0.0;
+    for (let i = 0; i < vocab_size; i++) {
+      cumultative += Math.pow(this.vocab[this.index2word[i]].count, power) / train_words_pow;
+      this.cum_table[i] = Math.round(cumultative * cum_table_domain);
+    }
+
     // Update states.
     this.state.num_sentences = this.sentences.length;
     this.state.vocab_size = this.index2word.length;
@@ -217,7 +240,8 @@ export class Word2vec implements ToyModel {
       let v1 = [];
       for (let j = 0; j < hidden_size; j++) {
         v0.push(get_random_init_weight(hidden_size));
-        v1.push(0);
+        v1.push(get_random_init_weight(hidden_size));
+        // v1.push(0);
       }
       syn0.push(v0);
       syn1.push(v1);
@@ -230,8 +254,10 @@ export class Word2vec implements ToyModel {
     for (let i = 0; i < vocab_size; i++)  this.scores.push(0);
     for (let j = 0; j < hidden_size; j++)  this.qi_vec.push(0);
 
-    this.state.iterations = 0;
+    this.state.instances = 0;
     this.state.num_possible_outputs = vocab_size;
+    this.state.epochs = 0;
+    this.state.sentences = 0;
   }
 
   private autocomplete(term: string): {} {
@@ -299,6 +325,9 @@ export class Word2vec implements ToyModel {
   }
 
   private update_qi_and_qo(request: {}) {
+    // sync model status with frontend
+    this.state.status = request['status'];
+
     // Update query_in.
     this.query_in = <string[]>request['query_in'] || [];
     this.qi_key = this.query_in.join('&');
@@ -346,7 +375,7 @@ export class Word2vec implements ToyModel {
     let query_in = this.query_in;
     let qi_vec = this.qi_vec;
     let scores = this.scores;
-    let iterations = this.state.iterations;
+    let iterations = this.state.instances;
     let qo_lookup = this.qo_map[this.qi_key];
     let queries_watched = this.queries_watched;
 
@@ -410,7 +439,7 @@ export class Word2vec implements ToyModel {
     }
 
     // Update ranking history for the following three types of items
-    // 1. top 5 ranked items
+    // 1. top N ranked items
     // 2. watched items
     // 3. items ranked near (+/-2) watched items (UPDATE: NOT USED)
     // [4]. excluding ignored items
@@ -418,7 +447,7 @@ export class Word2vec implements ToyModel {
     // as other watched items have already been created in qo_map).
     let query_out_records: QueryOutRecord[] = [];
     let ranks_to_show: number[] = [];
-    for (let i = 0; i < 5; i++) ranks_to_show.push(i);
+    for (let i = 0; i < 10; i++) ranks_to_show.push(i);
     for (let word of Object.keys(queries_watched)) {
       if (! (word in rank_lookup)) continue;
       if (vocab[word].idx in q_idx_set) continue;
@@ -461,15 +490,14 @@ export class Word2vec implements ToyModel {
 
   private train_until_breakpoint() {
     while (true) {
-      this.train_instance();
+      this.train_sentence();
       if (this.breakpoint_time > 0 &&
           Date.now() >= this.breakpoint_time) {
         this.set_status('AUTO_BREAK');
-        console.log('AUTO_BREAK');
         break;
       }
       if (this.breakpoint_iterations > 0 &&
-          this.state.iterations >= this.breakpoint_iterations) {
+          this.state.instances >= this.breakpoint_iterations) {
         this.set_status('USER_BREAK');
         console.log('USER_BREAK: iterations');
         break;
@@ -484,11 +512,115 @@ export class Word2vec implements ToyModel {
     this.compute_query_out_result();
   }
 
-  private train_instance() {
-    this.state.iterations += 1;
-    if (true) {  // TODO: change this to "trained a watched item"
-      this.count_instances_watched += 1;
+  private train_sentence() {
+    let sentence = this.sentences[this.state.sentences];
+    let words = sentence.split(' ');
+    let config = this.state.config;
+
+    // Update learning rate
+    let progress = Math.min(1, this.state.instances / (this.state.corpus_size * this.state.config.iter));
+    this.state.learning_rate = config.alpha - (config.alpha - config.min_alpha) * progress;
+
+    // NOTE: downsampling omitted here for simplicity
+    words = words.filter(w=>(w in this.vocab));
+    words.forEach((word, pos) => {
+      let reduced_window = Math.round(get_random_float() * config.window);
+      let start = Math.max(0, pos - config.window + reduced_window);
+      let words_reduced_window = words.slice(start, pos + config.window + 1 - reduced_window);
+
+      if (config.sg) {
+        words_reduced_window.forEach((word2, i) => {
+          let pos2 = i + start;
+          if (pos2 != pos) {
+            this.train_sg_pair(this.vocab[word].idx, this.vocab[word2].idx);
+          }
+        });
+      } else {
+        // CBOW
+        let word2_indices = [];
+        words_reduced_window.forEach((word2, i) => {
+          let pos2 = i + start;
+          if (pos2 != pos) {
+            word2_indices.push(pos2);
+          }
+        });
+        let l1 = [];
+        for (let j = 0; j < config.hidden_size; j++) l1.push(0);
+        for (let i of word2_indices) for (let j = 0; j < config.hidden_size; j++) l1[j] += this.syn0[i][j];
+        if (config.cbow_mean && word2_indices.length > 0) for (let j = 0; j < config.hidden_size; j++) l1[j] /= word2_indices.length;
+        this.train_cbow_pair(this.vocab[word].idx, word2_indices, l1);
+      }
+
+      this.state.instances ++;
+      if (word in this.queries_watched) this.count_instances_watched ++;
+    });
+
+    this.state.sentences ++;
+    if (this.state.sentences >= this.state.num_sentences) {
+      this.state.sentences = 0;
+      this.state.epochs ++;
     }
+  }
+
+  private train_sg_pair(w_idx: number, context_idx: number) {
+    let config = this.state.config;
+    let vocab_size = this.state.vocab_size;
+    let syn0 = this.syn0;
+    let syn1 = this.syn1;
+    let l1 = syn0[context_idx];
+    let neu1e = [];
+    for (let j = 0; j < config.hidden_size; j++) neu1e.push(0);
+    for (let d = 0; d < config.negative + 1; d++) {
+      let target: number;
+      let label: number;
+      if (d == 0) {
+        target = w_idx;
+        label = 1;
+      } else {
+        let random = get_random_float() * cum_table_domain;
+        target = bSearch(this.cum_table, random);
+        if (target == 0) target = Math.floor(get_random_float() * cum_table_domain) % (vocab_size - 1) + 1;
+        if (target == w_idx) continue;
+        label = 0;
+      }
+      let l2 = syn1[target];
+      let f = 0;
+      for (let j = 0; j < config.hidden_size; j++) f += l1[j] * l2[j];
+      let g = (label - 1 / (1 + Math.exp(-f))) * this.state.learning_rate;
+      for (let j = 0; j < config.hidden_size; j++) neu1e[j] += g * l2[j];
+      for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
+    }
+    for (let j = 0; j < config.hidden_size; j++) l1[j] += neu1e[j];
+  }
+
+  private train_cbow_pair(w_idx: number, context_idxs: number[], l1: number[]) {
+    let config = this.state.config;
+    let vocab_size = this.state.vocab_size;
+    let syn0 = this.syn0;
+    let syn1 = this.syn1;
+    let neu1e = [];
+    for (let j = 0; j < config.hidden_size; j++) neu1e.push(0);
+    for (let d = 0; d < config.negative + 1; d++) {
+      let target: number;
+      let label: number;
+      if (d == 0) {
+        target = w_idx;
+        label = 1;
+      } else {
+        let random = get_random_float() * cum_table_domain;
+        target = bSearch(this.cum_table, random);
+        if (target == 0) target = Math.floor(get_random_float() * cum_table_domain) % (vocab_size - 1) + 1;
+        if (target == w_idx) continue;
+        label = 0;
+      }
+      let l2 = syn1[target];
+      let f = 0;
+      for (let j = 0; j < config.hidden_size; j++) f += l1[j] * l2[j];
+      let g = (label - 1 / (1 + Math.exp(-f))) * this.state.learning_rate;
+      for (let j = 0; j < config.hidden_size; j++) neu1e[j] += g * l2[j];
+      for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
+    }
+    for (let a of context_idxs) for (let j = 0; j < config.hidden_size; j++) syn0[a][j] += neu1e[j];
   }
 }
 
@@ -506,4 +638,22 @@ function uniq_fast(a) {
     }
   }
   return out;
+}
+
+// equivalent to python's bisect_left.
+// http://codereview.stackexchange.com/questions/39573/
+function bSearch(xs: number[], x: number): number {
+    var bot = 0;
+    var top = xs.length;
+    if (xs.length == 0) return 0;
+    else if (x > xs[xs.length - 1]) return xs.length;
+    else if (x < xs[0]) return 0;
+    while (bot < top) {
+        var mid = Math.floor((bot + top) / 2);
+        var c = xs[mid] - x;
+        if (c === 0) return mid;
+        if (c < 0) bot = mid + 1;
+        if (0 < c) top = mid;
+    }
+    return bot;
 }
