@@ -156,4 +156,6 @@ export class UIStateHidden {
   is_queryin_valid: boolean = false;
   skip_reset_on_hashchange: boolean = false;  // effective once only
   qo_svg: d3.Selection<any>;  // query-out svg
+  is_to_pause_training: boolean = false;
+  is_model_busy_training: boolean = false;
 }

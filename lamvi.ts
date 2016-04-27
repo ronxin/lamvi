@@ -70,9 +70,42 @@ function reset() {
   ui_state.serialize();  // fold missing default values (if any) back to URL.
   validateBackend();
 
-
   updateUIStatus("Identifying model...");
   identify_model();
+
+  $('#btn-update-restart').click(reset);
+  $('#btn-start-pause').click(function() {
+    if (!ui_state_hidden.is_to_pause_training
+        && (ui_state_hidden.is_model_busy_training
+            || model_state.status == 'AUTO_BREAK')) {
+      $(this).html('Start');
+      ui_state_hidden.is_to_pause_training = true;
+      updateUIStatus('Pausing training...');
+    }
+    else if (!ui_state_hidden.is_model_busy_training
+        && model_state
+        && (model_state.status == 'WAIT_FOR_TRAIN'
+            || model_state.status == 'USER_BREAK')) {
+      $(this).html('Pause');
+      updateUIStatus('Training...');
+      setTimeout(()=>{batch_train(-1, false);}, 50);
+    }
+  });
+  $('#btn-next').click(function() {
+    if (!ui_state_hidden.is_model_busy_training
+        && model_state
+        && (model_state.status == 'WAIT_FOR_TRAIN'
+            || model_state.status == 'USER_BREAK')) {
+      updateUIStatus('Training until hitting next watched item...');
+      setTimeout(()=>{batch_train(1, true);},50);
+    }
+  });
+  $('#btn-reset').click(reset);
+
+  $('#btn-add-to-watchlist').click(() => {
+    let qo = $('#query-out-search').val();
+    searchQueryOut(qo);
+  });
 }
 
 function showError(message: string) {
@@ -85,10 +118,17 @@ function showError(message: string) {
 // depending on the model's returned model state, performs different frontend
 // tasks and sends different follow-up requests to model.
 function handleModelState() {
+  ui_state_hidden.is_model_busy_training = false;
   if (!model_state) {
     throw new Error('Empty model_state!');
   }
   let model_config = model_state.config;
+
+  if (model_state.status == 'AUTO_BREAK' && ui_state_hidden.is_to_pause_training) {
+    ui_state_hidden.is_to_pause_training = false;
+    model_state.status = 'USER_BREAK';
+  }
+
   switch (model_state.status) {
     case 'WAIT_FOR_CORPUS':  // for in-browser models only
       updateUIStatus('Loading corpus...');
@@ -112,57 +152,58 @@ function handleModelState() {
       break;
 
     case 'WAIT_FOR_TRAIN':
-      // Display overview of training data
-      let data_overview_fields = model_config.data_overview_fields;
-      $('#train-data-overview').empty();
-      for (let field of data_overview_fields) {
-        if (model_state.hasOwnProperty(field)) {
-          let val = model_state[field];
-          $('#train-data-overview').append(
-            '<div><b>' + field + ':</b>&nbsp;' + val + '</div>');
-        }
-      }
+      updateUIStatus('Ready for training.');
+      display_training_data_overview();
+      display_training_status_overview();
 
-      // Display overview of training status
-      let train_overview_fields = model_config.train_overview_fields;
-      $('#train-status-overview').empty();
-      for (let field of train_overview_fields) {
-        if (model_state.hasOwnProperty(field)) {
-          let val = model_state[field];
-          $('#train-status-overview').append(
-            '<div><b>' + field + ':</b>&nbsp;' + val + '</div>');
-        }
-      }
-
-      // Display queries
       if (!ui_state_hidden.has_setup_query_column) {
         ui_state_hidden.has_setup_query_column = true;  // has to be called first!
         setupQueryColumn(model_config);  // this will apply default queries if there are none
         updateQueryOutResult();
       }
-      // For debug only
-      /*
-      model_state.num_possible_outputs = 1000;
-      model_state.iterations = 10;
-      model_state.query_out_records = [
-        {query: 'foo', rank: 0, status: 'GOOD',
-         rank_history: [{rank:1,iteration:1},{rank:5,iteration:2},{rank:2, iteration:10}]},
-        {query: 'bar', rank: 1, status: 'NORMAL',
-         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz', rank: 2, status: 'BAD',
-         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz1', rank: 100, status: 'WATCHED',
-         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-        {query: 'baz2', rank: 101, status: 'NORMAL',
-         rank_history: [{rank:3,iteration:1},{rank:7,iteration:5},{rank:9, iteration:10}]},
-      ];
-      */
+      updateQueryOutSVG();
+      break
 
+    case 'AUTO_BREAK':
+      setTimeout(resume_training, 150);
+      display_training_status_overview();
+      updateQueryOutSVG();
+      break;
+
+    case 'USER_BREAK':
+      updateUIStatus('Training paused.');
+      display_training_status_overview();
       updateQueryOutSVG();
       break;
 
     default:
       throw new Error('Unrecognized model status: "' + model_state.status + '"');
+  }
+}
+
+function display_training_data_overview() {
+  let model_config = model_state.config;
+  let data_overview_fields = model_config.data_overview_fields;
+  $('#train-data-overview').empty();
+  for (let field of data_overview_fields) {
+    if (model_state.hasOwnProperty(field)) {
+      let val = model_state[field];
+      $('#train-data-overview').append(
+        '<div><b>' + field + ':</b>&nbsp;' + val + '</div>');
+    }
+  }
+}
+
+function display_training_status_overview() {
+  let model_config = model_state.config;
+  let train_overview_fields = model_config.train_overview_fields;
+  $('#train-status-overview').empty();
+  for (let field of train_overview_fields) {
+    if (model_state.hasOwnProperty(field)) {
+      let val = model_state[field];
+      $('#train-status-overview').append(
+        '<div><b>' + field + ':</b>&nbsp;' + val + '</div>');
+    }
   }
 }
 
@@ -405,11 +446,11 @@ function updateQueryOutSVG() {
     linechart_maxY = Math.max(linechart_maxY, max);
   }
   let linechart_xScale = d3.scale.linear()
-    .domain([0, model_state.iterations - 1])
-    .range([0, linechart_width]);
+    .domain([0, model_state.iterations])
+    .range([linechart_width*0.025, linechart_width*0.975]);
   let linechart_yScale = d3.scale.linear()
     .domain([0, linechart_maxY])
-    .range([0, item_height]);
+    .range([item_height*0.025, item_height*0.975]);
 
   // ----------------------
   // Draw query-out items.
@@ -507,7 +548,7 @@ function updateQueryOutSVG() {
     .classed('qo-linechart', true)
     .datum(d => d.rank_history)
     .attr('d', d3.svg.line<{rank:number,iteration:number}>()
-      .x(d => linechart_xScale(d.iteration - 1))
+      .x(d => linechart_xScale(d.iteration))
       .y(d => linechart_yScale(d.rank)));
 
   // Draw control icons
@@ -557,6 +598,19 @@ function updateQueryOutSVG() {
   $('.tooltip').remove();
 }
 
+function batch_train(iterations: number, watched: boolean): void {
+  ui_state_hidden.is_model_busy_training = true;
+  sendRequestToBackend('train',
+    {iterations: iterations, watched: watched},
+    handleModelState
+  );
+}
+
+function resume_training(): void {
+  ui_state_hidden.is_model_busy_training = true;
+  sendRequestToBackend('train-continue', {}, handleModelState);
+}
+
 window.addEventListener('hashchange', () => {
   if (ui_state_hidden.skip_reset_on_hashchange) {
     ui_state_hidden.skip_reset_on_hashchange = false;
@@ -577,15 +631,6 @@ $('#query-out-search').autocomplete({
   },
   delay: 0,
   minLength: 1,
-});
-
-$('#btn-update-restart').click(() => {
-  reset();
-});
-
-$('#btn-add-to-watchlist').click(() => {
-  let qo = $('#query-out-search').val();
-  searchQueryOut(qo);
 });
 
 reset();

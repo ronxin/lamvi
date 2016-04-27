@@ -12,6 +12,8 @@ export class ModelConfig {
 
   default_query_in: string[];
   default_query_out: string[];
+
+  report_interval_microseconds: number;  // ms
 }
 
 /*

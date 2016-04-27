@@ -19,6 +19,7 @@ class Word2vecConfig extends ModelConfig {
   default_query_in: string[] = ['women'];
   default_query_out: string[] = ['W_men'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
+  report_interval_microseconds: number = 250;
 };
 
 class Word2vecState extends ModelState {
@@ -65,6 +66,12 @@ export class Word2vec implements ToyModel {
   // some time.
   scores: number[];
   qi_vec: number[];
+
+  // Training status tracker
+  count_instances_watched = 0;  // number of seen instances of watched queries
+  breakpoint_instances_watched = -1;  // when this number (is positive) is met, break.
+  breakpoint_iterations = -1;
+  breakpoint_time = -1;
 
   constructor(model_config: {}) {
     this.state = new Word2vecState();
@@ -117,6 +124,24 @@ export class Word2vec implements ToyModel {
       case 'update_query_out_result':
         this.update_qi_and_qo(request);
         this.compute_query_out_result();
+        return this.get_state();
+
+      case 'train':
+        let requested_iterations = <number>request['iterations'] || -1;
+        let watched = <boolean>request['watched'];
+        this.breakpoint_iterations = -1;
+        this.breakpoint_instances_watched = -1;
+        this.breakpoint_time = Date.now() + this.state.config.report_interval_microseconds;
+        if (requested_iterations > 0) {
+          if (watched) this.breakpoint_instances_watched = this.count_instances_watched + requested_iterations;
+          else this.breakpoint_iterations = this.state.iterations + requested_iterations;
+        }
+        this.train_until_breakpoint();
+        return this.get_state();
+
+      case 'train-continue':
+        this.breakpoint_time = Date.now() + this.state.config.report_interval_microseconds;
+        this.train_until_breakpoint();
         return this.get_state();
 
       default:
@@ -387,7 +412,7 @@ export class Word2vec implements ToyModel {
     // Update ranking history for the following three types of items
     // 1. top 5 ranked items
     // 2. watched items
-    // 3. items ranked near (+/-2) watched items
+    // 3. items ranked near (+/-2) watched items (UPDATE: NOT USED)
     // [4]. excluding ignored items
     // Create records if not exist in qo_map (which means the status is NORMAL,
     // as other watched items have already been created in qo_map).
@@ -398,11 +423,12 @@ export class Word2vec implements ToyModel {
       if (! (word in rank_lookup)) continue;
       if (vocab[word].idx in q_idx_set) continue;
       let rank = rank_lookup[word];
-      for (let i = rank - 2; i <= rank + 2; i++) {
-        if (i < 0) continue;
-        if (i >= vocab_size) continue;
-        ranks_to_show.push(i);
-      }
+      ranks_to_show.push(rank);
+      // for (let i = rank - 2; i <= rank + 2; i++) {
+      //   if (i < 0) continue;
+      //   if (i >= vocab_size) continue;
+      //   ranks_to_show.push(i);
+      // }
     }
     ranks_to_show = uniq_fast(ranks_to_show)
       .filter(rank => !(this.index2word[item_scores[rank].idx] in this.queries_ignored))
@@ -431,6 +457,38 @@ export class Word2vec implements ToyModel {
 
     // Set state
     this.state.query_out_records = query_out_records;
+  }
+
+  private train_until_breakpoint() {
+    while (true) {
+      this.train_instance();
+      if (this.breakpoint_time > 0 &&
+          Date.now() >= this.breakpoint_time) {
+        this.set_status('AUTO_BREAK');
+        console.log('AUTO_BREAK');
+        break;
+      }
+      if (this.breakpoint_iterations > 0 &&
+          this.state.iterations >= this.breakpoint_iterations) {
+        this.set_status('USER_BREAK');
+        console.log('USER_BREAK: iterations');
+        break;
+      }
+      if (this.breakpoint_instances_watched > 0 &&
+          this.count_instances_watched >= this.breakpoint_instances_watched) {
+        this.set_status('USER_BREAK');
+        console.log('USER_BREAK: watched');
+        break;
+      }
+    }
+    this.compute_query_out_result();
+  }
+
+  private train_instance() {
+    this.state.iterations += 1;
+    if (true) {  // TODO: change this to "trained a watched item"
+      this.count_instances_watched += 1;
+    }
   }
 }
 
