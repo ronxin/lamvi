@@ -145,3 +145,8 @@ textarea {
     stroke: #555;
     stroke-width: 0.5;
 }
+
+.table>tbody>tr>td, .table>thead>tr>th {
+  padding-top: 0;
+  padding-bottom: 0;
+}

@@ -36,5 +36,6 @@ export interface QueryOutRecord {
   query: string;
   rank?: number;  // 0-indexed
   rank_history?: {rank: number, iteration: number}[];
-  status: string;
+  status?: string;
+  score?: number;
 }

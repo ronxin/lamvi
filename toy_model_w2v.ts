@@ -4,8 +4,10 @@ import * as util from "./util";
 import {get_random_float, get_random_init_weight} from "./random";
 
 // for negative sampling
-const power = 0.75;
-const cum_table_domain = 2147483647;  // 2^31 - 1
+const POWER = 0.75;
+const CUM_TABLE_DOMAIN = 2147483647;  // 2^31 - 1
+const MAX_EXP = 6;
+const EXP_TABLE_SIZE = 1000;
 
 class Word2vecConfig extends ModelConfig {
   hidden_size: number = 16;
@@ -39,6 +41,7 @@ export class Word2vecState extends ModelState {
   full_model_name = 'Word2Vec';
 
   qi_vec: number[];
+  per_dimension: QueryOutRecord[][];  // [dim][rank] = {query, score}
 }
 
 class VocabItem {
@@ -72,6 +75,7 @@ export class Word2vec implements ToyModel {
   syn0: number[][];
   syn1: number[][];
   cum_table: number[];  // cumultative distribution table for negative sampling.
+  exp_table: number[];
 
   // Some cached arrays that should be initialized only once to potentially save
   // some time.
@@ -218,12 +222,12 @@ export class Word2vec implements ToyModel {
     this.cum_table = [];
     for (let i = 0; i < vocab_size; i++) this.cum_table.push(0);
     for (let i = 0; i < vocab_size; i++) {
-      train_words_pow += Math.pow(this.vocab[this.index2word[i]].count, power);
+      train_words_pow += Math.pow(this.vocab[this.index2word[i]].count, POWER);
     }
     let cumultative: number = 0.0;
     for (let i = 0; i < vocab_size; i++) {
-      cumultative += Math.pow(this.vocab[this.index2word[i]].count, power) / train_words_pow;
-      this.cum_table[i] = Math.round(cumultative * cum_table_domain);
+      cumultative += Math.pow(this.vocab[this.index2word[i]].count, POWER) / train_words_pow;
+      this.cum_table[i] = Math.round(cumultative * CUM_TABLE_DOMAIN);
     }
 
     // Update states.
@@ -260,6 +264,13 @@ export class Word2vec implements ToyModel {
     this.state.num_possible_outputs = vocab_size;
     this.state.epochs = 0;
     this.state.sentences = 0;
+
+    this.exp_table = [];
+    for (let i = 0; i < EXP_TABLE_SIZE; i++) {
+      let v = Math.exp((i / EXP_TABLE_SIZE * 2 - 1) * MAX_EXP);
+      this.exp_table.push(v / (v + 1));
+    }
+    this.exp_table.push(0);
   }
 
   private autocomplete(term: string): {} {
@@ -469,12 +480,13 @@ export class Word2vec implements ToyModel {
     for (let rank of ranks_to_show) {
       let item_score = item_scores[rank];
       let word = this.index2word[item_score.idx];
-      let score = item_score.score;  // unused for now. -- this is the cosine similarity
+      let score = item_score.score;
       if (!(word in qo_lookup)) {
         qo_lookup[word] = {query: word, status: 'NORMAL'};
       }
       let record = qo_lookup[word];
       record.rank = rank;
+      record.score = score;
       if (! record.rank_history) {
         record.rank_history = [];
       }
@@ -490,6 +502,22 @@ export class Word2vec implements ToyModel {
     // Set state
     this.state.query_out_records = query_out_records;
     this.state.qi_vec = qi_vec;
+
+    // Among the top-N ranked result, for each dimension of the vector, re-rank
+    // by how excited they are.
+    let item_scores_topN = item_scores.slice(0, 100);
+    this.state.per_dimension = [];
+    for (let j = 0; j < hidden_size; j++) {
+      let reranked_items: QueryOutRecord[] = $
+          .map(item_scores_topN,
+               (x,j) => { return {
+                  query: this.index2word[x.idx],
+                  score:(qi_vec[j] * syn0[x.idx][j])}
+               })
+          .sort((a,b)=>b.score-a.score)
+          .slice(0, 10);
+       this.state.per_dimension.push(reranked_items);
+    }
   }
 
   private train_until_breakpoint() {
@@ -528,6 +556,7 @@ export class Word2vec implements ToyModel {
     // NOTE: downsampling omitted here for simplicity
     words = words.filter(w=>(w in this.vocab));
     words.forEach((word, pos) => {
+      let idx1 = this.vocab[word].idx;
       let reduced_window = Math.round(get_random_float() * config.window);
       let start = Math.max(0, pos - config.window + reduced_window);
       let words_reduced_window = words.slice(start, pos + config.window + 1 - reduced_window);
@@ -536,7 +565,10 @@ export class Word2vec implements ToyModel {
         words_reduced_window.forEach((word2, i) => {
           let pos2 = i + start;
           if (pos2 != pos) {
-            this.train_sg_pair(this.vocab[word].idx, this.vocab[word2].idx);
+            let idx2 = this.vocab[word2].idx;
+            if (idx1 != idx2) {
+              this.train_sg_pair(idx1, idx2);
+            }
           }
         });
       } else {
@@ -545,7 +577,10 @@ export class Word2vec implements ToyModel {
         words_reduced_window.forEach((word2, i) => {
           let pos2 = i + start;
           if (pos2 != pos) {
-            word2_indices.push(pos2);
+            let idx2 = this.vocab[word2].idx;
+            if (idx1 != idx2) {
+              word2_indices.push(pos2);
+            }
           }
         });
         let l1 = [];
@@ -567,12 +602,14 @@ export class Word2vec implements ToyModel {
   }
 
   private train_sg_pair(w_idx: number, context_idx: number) {
+    if (w_idx == context_idx) return;
     let config = this.state.config;
     let vocab_size = this.state.vocab_size;
     let syn0 = this.syn0;
     let syn1 = this.syn1;
     let l1 = syn0[context_idx];
     let neu1e = [];
+    let learning_rate = this.state.learning_rate;
     for (let j = 0; j < config.hidden_size; j++) neu1e.push(0);
     for (let d = 0; d < config.negative + 1; d++) {
       let target: number;
@@ -581,16 +618,24 @@ export class Word2vec implements ToyModel {
         target = w_idx;
         label = 1;
       } else {
-        let random = get_random_float() * cum_table_domain;
+        let random = get_random_float() * CUM_TABLE_DOMAIN;
         target = bSearch(this.cum_table, random);
-        if (target == 0) target = Math.floor(get_random_float() * cum_table_domain) % (vocab_size - 1) + 1;
+        if (target == 0) target = Math.floor(get_random_float() * CUM_TABLE_DOMAIN) % (vocab_size - 1) + 1;
         if (target == w_idx) continue;
         label = 0;
       }
       let l2 = syn1[target];
       let f = 0;
+      let g: number;
       for (let j = 0; j < config.hidden_size; j++) f += l1[j] * l2[j];
-      let g = (label - 1 / (1 + Math.exp(-f))) * this.state.learning_rate;
+      if (f > MAX_EXP) g = (label - 1) * learning_rate;
+      else if (f < -MAX_EXP) g = (label - 0) * learning_rate;
+      else g = (label - this.exp_table[Math.floor((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * learning_rate;
+      if (isNaN(g) || !isFinite(g)) {
+        console.log(g, l1, l2);
+        throw new Error('ValueError!');
+      }
+
       for (let j = 0; j < config.hidden_size; j++) neu1e[j] += g * l2[j];
       for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
     }
@@ -603,6 +648,7 @@ export class Word2vec implements ToyModel {
     let syn0 = this.syn0;
     let syn1 = this.syn1;
     let neu1e = [];
+    let learning_rate = this.state.learning_rate;
     for (let j = 0; j < config.hidden_size; j++) neu1e.push(0);
     for (let d = 0; d < config.negative + 1; d++) {
       let target: number;
@@ -611,16 +657,19 @@ export class Word2vec implements ToyModel {
         target = w_idx;
         label = 1;
       } else {
-        let random = get_random_float() * cum_table_domain;
+        let random = get_random_float() * CUM_TABLE_DOMAIN;
         target = bSearch(this.cum_table, random);
-        if (target == 0) target = Math.floor(get_random_float() * cum_table_domain) % (vocab_size - 1) + 1;
+        if (target == 0) target = Math.floor(get_random_float() * CUM_TABLE_DOMAIN) % (vocab_size - 1) + 1;
         if (target == w_idx) continue;
         label = 0;
       }
       let l2 = syn1[target];
       let f = 0;
+      let g: number;
       for (let j = 0; j < config.hidden_size; j++) f += l1[j] * l2[j];
-      let g = (label - 1 / (1 + Math.exp(-f))) * this.state.learning_rate;
+      if (f > MAX_EXP) g = (label - 1) * learning_rate;
+      else if (f < -MAX_EXP) g = (label - 0) * learning_rate;
+      else g = (label - this.exp_table[Math.floor((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * learning_rate;
       for (let j = 0; j < config.hidden_size; j++) neu1e[j] += g * l2[j];
       for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
     }

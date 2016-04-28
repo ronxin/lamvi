@@ -630,12 +630,19 @@ function resume_training(): void {
 function updateHiddenIn(): void {
   let svg = d3.select('#hidden-in-container svg');
   let w2v_model_state = <Word2vecState>model_state;
+  let tbody = d3.select('#hidden-in-container tbody');
+  let default_records = w2v_model_state.query_out_records;
+  let per_dim_records = w2v_model_state.per_dimension;
   d3.select('#hidden-in-container .query')
     .html('&nbsp; - "' + ui_state.query_in.join('" "') + '"');
-  updateHeatMap(svg, w2v_model_state.qi_vec);
+
+  updateHeatMap(svg, w2v_model_state.qi_vec, default_records, per_dim_records, tbody);
+  updateInspectorTBody(tbody, default_records);
 }
 
-function updateHeatMap(svg: d3.Selection<any>, vector: number[]): void {
+function updateHeatMap(svg: d3.Selection<any>, vector: number[],
+    default_records: QueryOutRecord[], per_dim_records: QueryOutRecord[][],
+    tbody: d3.Selection<any>): void {
   const hmap_svg_width = 100;
   const hmap_svg_height = 100;
   let ncol = Math.floor(Math.sqrt(vector.length));
@@ -655,7 +662,19 @@ function updateHeatMap(svg: d3.Selection<any>, vector: number[]): void {
     .attr('y', (d,i) => cellHeight * (Math.floor(i / ncol)))
     .attr('width', cellFillWidth)
     .attr('height', cellFillHeight)
-    .style('fill', d => {return util.exciteValueToColor(d)});
+    .style('fill', d => {return util.exciteValueToColor(d)})
+    .on('mouseover', (d,i)=>{updateInspectorTBody(tbody, per_dim_records[i])})
+    .on('mouseout', ()=>{updateInspectorTBody(tbody, default_records)});
+}
+
+function updateInspectorTBody(tbody: d3.Selection<any>, ranked_items: QueryOutRecord[]): void {
+  tbody.selectAll('*').remove();
+  let rows = tbody.selectAll('tr')
+    .data(ranked_items.slice(0, 8))
+    .enter()
+    .append('tr');
+  rows.append('td').html(d=>d.query);
+  rows.append('td').html(d=>(''+d.score).slice(0, 5));
 }
 
 window.addEventListener('hashchange', () => {
