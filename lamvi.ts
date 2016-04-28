@@ -24,6 +24,7 @@ limitations under the License.
 
 import {UIState, UIStateHidden} from "./ui_state";
 import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
+import {Word2vecState} from "./toy_model_w2v";
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
 import * as icons from "./icons.ts";
@@ -163,18 +164,21 @@ function handleModelState() {
         updateQueryOutResult();
       }
       updateQueryOutSVG();
+      updateHiddenIn();
       break
 
     case 'AUTO_BREAK':
       train_init_timeout = setTimeout(resume_training, 150);
       display_training_status_overview();
       updateQueryOutSVG();
+      updateHiddenIn();
       break;
 
     case 'USER_BREAK':
       updateUIStatus('Training paused.');
       display_training_status_overview();
       updateQueryOutSVG();
+      updateHiddenIn();
       break;
 
     default:
@@ -620,6 +624,38 @@ function resume_training(): void {
     ui_state_hidden.is_model_busy_training = true;
     sendRequestToBackend('train-continue', {}, handleModelState);
   }
+}
+
+// word2vec only
+function updateHiddenIn(): void {
+  let svg = d3.select('#hidden-in-container svg');
+  let w2v_model_state = <Word2vecState>model_state;
+  d3.select('#hidden-in-container .query')
+    .html('&nbsp; - "' + ui_state.query_in.join('" "') + '"');
+  updateHeatMap(svg, w2v_model_state.qi_vec);
+}
+
+function updateHeatMap(svg: d3.Selection<any>, vector: number[]): void {
+  const hmap_svg_width = 100;
+  const hmap_svg_height = 100;
+  let ncol = Math.floor(Math.sqrt(vector.length));
+  let nrow = ncol*ncol == vector.length ? ncol : ncol + 1;
+  let cellHeight = hmap_svg_height / nrow;
+  let cellWidth = hmap_svg_width / ncol;
+  let cellFillHeight = 0.95 * cellHeight;
+  let cellFillWidth = 0.95 * cellWidth;
+  svg.selectAll('*').remove();
+  svg.selectAll('g.cell')
+    .data(vector)
+    .enter()
+    .append('g')
+    .classed('cell', true)
+    .append('rect')
+    .attr('x', (d,i) => cellWidth * (i % ncol))
+    .attr('y', (d,i) => cellHeight * (Math.floor(i / ncol)))
+    .attr('width', cellFillWidth)
+    .attr('height', cellFillHeight)
+    .style('fill', d => {return util.exciteValueToColor(d)});
 }
 
 window.addEventListener('hashchange', () => {

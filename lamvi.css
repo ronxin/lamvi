@@ -45,7 +45,7 @@ header h1 {
     background-color: #f7f7f7;
 }
 
-.column.network {
+.column.inspect {
     width: 40%;
 }
 
@@ -64,6 +64,7 @@ textarea {
     margin-top: 3px;
     border: 1px solid #517fa4;
     padding: 5px;
+    overflow: auto;
 }
 
 #query-tags > li {

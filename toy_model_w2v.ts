@@ -8,7 +8,7 @@ const power = 0.75;
 const cum_table_domain = 2147483647;  // 2^31 - 1
 
 class Word2vecConfig extends ModelConfig {
-  hidden_size: number = 10;
+  hidden_size: number = 16;
   alpha: number = 0.1;
   window: number = 3;
   min_count: number = 2;
@@ -26,7 +26,7 @@ class Word2vecConfig extends ModelConfig {
   report_interval_microseconds: number = 250;
 };
 
-class Word2vecState extends ModelState {
+export class Word2vecState extends ModelState {
   config: Word2vecConfig;
   vocab_size: number;
   num_sentences: number;
@@ -37,6 +37,8 @@ class Word2vecState extends ModelState {
   learning_rate: number;
 
   full_model_name = 'Word2Vec';
+
+  qi_vec: number[];
 }
 
 class VocabItem {
@@ -132,7 +134,7 @@ export class Word2vec implements ToyModel {
 
       case 'update_query_out_result':
         this.update_qi_and_qo(request);
-        this.compute_query_out_result();
+        this.compute_query_result();
         return this.get_state();
 
       case 'train':
@@ -361,7 +363,8 @@ export class Word2vec implements ToyModel {
   // qo_map has been taken care of in update_qi_and_qo.
   // This function just focuses on computing the ranking and maintaining history.
   // Updates this.state.query_out_records upon completion.
-  private compute_query_out_result() {
+  // Also updates the hidden layer status for the middle column.
+  private compute_query_result() {
     if (this.query_in.length == 0) {
       this.state.query_out_records = [];
       return;
@@ -486,6 +489,7 @@ export class Word2vec implements ToyModel {
 
     // Set state
     this.state.query_out_records = query_out_records;
+    this.state.qi_vec = qi_vec;
   }
 
   private train_until_breakpoint() {
@@ -509,7 +513,7 @@ export class Word2vec implements ToyModel {
         break;
       }
     }
-    this.compute_query_out_result();
+    this.compute_query_result();
   }
 
   private train_sentence() {
