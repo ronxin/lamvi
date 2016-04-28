@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "clean": "node node_modules/rimraf/bin.js dist/",
-    "prep": "typings install && mkdir -p dist && cat node_modules/jquery/dist/jquery.min.js node_modules/jqueryui/jquery-ui.min.js node_modules/bootstrap/dist/js/bootstrap.min.js node_modules/d3/d3.min.js lib/*.js > dist/lib.js && cp pg1342-tokenized.txt dist/ && cp -r lib/images dist/",
+    "prep": "typings install && mkdir -p dist && cat node_modules/jquery/dist/jquery.min.js node_modules/jqueryui/jquery-ui.min.js node_modules/bootstrap/dist/js/bootstrap.min.js node_modules/d3/d3.min.js lib/tag-it.min.js node_modules/seedrandom/seedrandom.min.js > dist/lib.js && cp pg1342-tokenized.txt dist/ && cp -r lib/images dist/",
     "build-css": "cat lib/jquery-ui.min.css node_modules/bootstrap/dist/css/bootstrap.min.css lib/jquery.tagit.css lamvi.css > dist/bundle.css",
     "watch-css": "node node_modules/catw/bin/cmd.js lib/jquery-ui.min.css node_modules/bootstrap/dist/css/bootstrap.min.css lib/jquery.tagit.css lamvi.css -o dist/bundle.css",
     "build-html": "cat index.html > dist/index.html",
@@ -32,6 +32,7 @@
   "dependencies": {
     "d3": "^3.5.16",
     "jquery": "^1.12.3",
-    "jqueryui": "^1.11.1"
+    "jqueryui": "^1.11.1",
+    "seedrandom": "^2.4.2"
   }
 }

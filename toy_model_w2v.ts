@@ -246,6 +246,7 @@ export class Word2vec implements ToyModel {
       let v1 = [];
       for (let j = 0; j < hidden_size; j++) {
         v0.push(get_random_init_weight(hidden_size));
+        // let a = get_random_init_weight(hidden_size);
         v1.push(get_random_init_weight(hidden_size));
         // v1.push(0);
       }
@@ -342,7 +343,8 @@ export class Word2vec implements ToyModel {
     this.state.status = request['status'];
 
     // Update query_in.
-    this.query_in = <string[]>request['query_in'] || [];
+    this.query_in = <string[]>request['query_in'];
+    if (this.query_in.length == 0) this.query_in = ['\0'];
     this.qi_key = this.query_in.join('&');
     if (this.qi_key.length > 0 && ! (this.qi_key in this.qo_map)) {
       this.qo_map[this.qi_key] = {};
@@ -419,6 +421,7 @@ export class Word2vec implements ToyModel {
     }
 
     // Compute scores
+    let l2_sqrts: number[] = [];
     for (let i = 0; i < vocab_size; i++) {
       if (i in q_idx_set) {
         scores[i] = 0;  // (query words have a score of 0)
@@ -431,6 +434,7 @@ export class Word2vec implements ToyModel {
          l2 += syn0[i][j] * syn0[i][j];
       }
       let l2_sqrt = Math.sqrt(l2);
+      l2_sqrts.push(l2_sqrt);
       if (l2 == 0) scores[i] = 0;
       else scores[i] = prod / l2_sqrt;
     }
@@ -510,9 +514,14 @@ export class Word2vec implements ToyModel {
     for (let j = 0; j < hidden_size; j++) {
       let reranked_items: QueryOutRecord[] = $
           .map(item_scores_topN,
-               (x,j) => { return {
+               x => {
+                 let score = 0;
+                 if (l2_sqrts[x.idx] > 0) {
+                   score = qi_vec[j] * syn0[x.idx][j] / l2_sqrts[x.idx];
+                 }
+                 return {
                   query: this.index2word[x.idx],
-                  score:(qi_vec[j] * syn0[x.idx][j])}
+                  score: score};
                })
           .sort((a,b)=>b.score-a.score)
           .slice(0, 10);
@@ -531,13 +540,11 @@ export class Word2vec implements ToyModel {
       if (this.breakpoint_iterations > 0 &&
           this.state.instances >= this.breakpoint_iterations) {
         this.set_status('USER_BREAK');
-        console.log('USER_BREAK: iterations');
         break;
       }
       if (this.breakpoint_instances_watched > 0 &&
           this.count_instances_watched >= this.breakpoint_instances_watched) {
         this.set_status('USER_BREAK');
-        console.log('USER_BREAK: watched');
         break;
       }
     }
@@ -633,7 +640,7 @@ export class Word2vec implements ToyModel {
       else g = (label - this.exp_table[Math.floor((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * learning_rate;
       if (isNaN(g) || !isFinite(g)) {
         console.log(g, l1, l2);
-        throw new Error('ValueError!');
+        throw new Error('ValueError!');  // debug only ...
       }
 
       for (let j = 0; j < config.hidden_size; j++) neu1e[j] += g * l2[j];
