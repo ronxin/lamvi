@@ -24,7 +24,7 @@ limitations under the License.
 
 import {UIState, UIStateHidden} from "./ui_state";
 import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
-import {Word2vecState, PairProfile} from "./toy_model_w2v";
+import {Word2vecState, PairProfile, TrainInstanceSummary} from "./toy_model_w2v";
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
 import * as icons from "./icons.ts";
@@ -639,13 +639,13 @@ function updateHiddenIn(): void {
   d3.select('#hidden-in-container .query')
     .html('&nbsp; - "' + ui_state.query_in.join('" "') + '"');
 
-  updateHeatMap(svg, w2v_model_state.qi_vec, default_records, per_dim_records, tbody, false);
-  updateInspectorTBody(tbody, default_records, false);
+  updateHeatMap(svg, w2v_model_state.qi_vec, default_records, per_dim_records, tbody, false, null);
+  updateInspectorTBody(tbody, default_records, false, null);
 }
 
 function updateHeatMap(svg: d3.Selection<any>, vector: number[],
     default_records: QueryOutRecord[], per_dim_records: QueryOutRecord[][],
-    tbody: d3.Selection<any>, is_pair: boolean): void {
+    tbody: d3.Selection<any>, is_pair: boolean, query_out: string): void {
   const hmap_svg_width = 100;
   const hmap_svg_height = 100;
   let ncol = Math.floor(Math.sqrt(vector.length));
@@ -666,23 +666,40 @@ function updateHeatMap(svg: d3.Selection<any>, vector: number[],
     .attr('width', cellFillWidth)
     .attr('height', cellFillHeight)
     .style('fill', d => {return util.exciteValueToColor(d)})
-    .on('mouseover', (d,i)=>{updateInspectorTBody(tbody, per_dim_records[i], is_pair)})
-    .on('mouseout', ()=>{updateInspectorTBody(tbody, default_records, is_pair)});
+    .on('mouseover', (d,i)=>{updateInspectorTBody(tbody, per_dim_records[i], is_pair, query_out)})
+    .on('mouseout', ()=>{updateInspectorTBody(tbody, default_records, is_pair, query_out)});
 }
 
 function updateInspectorTBody(
     tbody: d3.Selection<any>,
     ranked_items: {query:string, score?:number, score1?:number, score2?:number}[],
-    is_pair: boolean): void {
+    is_pair: boolean, query_out: string): void {
   tbody.selectAll('*').remove();
   let rows = tbody.selectAll('tr')
     .data(ranked_items.slice(0, 8))
     .enter()
     .append('tr');
+
   rows.append('td').html(d=>d.query);
   if (is_pair) {
     rows.append('td').html(d=>(''+d.score1).slice(0, 5));
     rows.append('td').html(d=>(''+d.score2).slice(0, 5));
+    if (!query_out) {
+      throw new Error('when is_pair is true, query_out must be assigned.');
+    }
+    let query_in = ui_state.query_in[0];
+    rows.on('click', d=>{
+      sendRequestToBackend('influential_train_instances', {w1: query_in, w2: d.query}, response => {
+        $('#concordance-container').show();
+        d3.select('#concordance-container .query').html(`&nbsp; - "${query_in}"" vs "${d.query}"`);
+        display_concordance(d3.select('#concordance-container tbody'), response);
+      });
+      sendRequestToBackend('influential_train_instances', {w1: query_out, w2: d.query}, response => {
+        $('#concordance-container-2').show();
+        d3.select('#concordance-container-2 .query').html(`&nbsp; - "${query_out}"" vs "${d.query}"`);
+        display_concordance(d3.select('#concordance-container-2 tbody'), response);
+      });
+    });
   } else {
     rows.append('td').html(d=>(''+d.score).slice(0, 5));
   }
@@ -704,14 +721,45 @@ function display_pair_profile(response:{}): void {
   let per_dim_records_out = pair_profile.qo_per_dim_neighbors;
   d3.select('#hidden-out-container .query')
     .html('&nbsp; - "' + pair_profile.qo + '"');
-  updateHeatMap(svg_out, pair_profile.qo_vec, default_records_out, per_dim_records_out, tbody_out, false);
-  updateInspectorTBody(tbody_out, default_records_out, false);
+  updateHeatMap(svg_out, pair_profile.qo_vec, default_records_out, per_dim_records_out, tbody_out, false, null);
+  updateInspectorTBody(tbody_out, default_records_out, false, null);
 
   let default_records_prod = pair_profile.elemsum_neighbors;
   let per_dim_records_prod = pair_profile.elemsum_per_dim_neighbors;
-  console.log(pair_profile);
-  updateHeatMap(svg_prod, pair_profile.elemprod, default_records_prod, per_dim_records_prod, tbody_prod, true);
-  updateInspectorTBody(tbody_prod, default_records_prod, true);
+  updateHeatMap(svg_prod, pair_profile.elemprod, default_records_prod, per_dim_records_prod, tbody_prod, true, pair_profile.qo);
+  updateInspectorTBody(tbody_prod, default_records_prod, true, pair_profile.qo);
+}
+
+function display_concordance(tbody: d3.Selection<any>, data: TrainInstanceSummary[]): void {
+  let summaries = data;
+  tbody.selectAll('*').remove();
+  let rows = tbody.selectAll('tr')
+    .data(summaries.slice(0, 8))
+    .enter()
+    .append('tr');
+  rows.append('td').html(d=>(''+d.total_movement).slice(0, 5));
+  // About nested d3 data structure: http://code.hazzens.com/d3tut/lesson_3.html
+  rows.append('td')
+    .selectAll('span')
+    .data(d => {
+      let words = d.sentence.split(' ');
+      return words.map((w,i)=>{
+        let cls: string;
+        if (d.pos == i) cls = 'pos1';
+        else if (d.pos2 == i) cls = 'pos2';
+        else cls = 'normal';
+        if (i > 0) w = ' ' + w;
+        return {w: w, cls:cls};
+      }).filter((w,i) => {
+        let window = model_state.config['window'];
+        if (i < d.pos - window - 2 || i > d.pos + window + 2) return false;
+        return true;
+      });
+    })
+    .enter()
+    .append('span')
+    .attr('class', d=>d['cls'])
+    .text(d=>d['w']);
 }
 
 window.addEventListener('hashchange', () => {

@@ -148,6 +148,16 @@ textarea {
 }
 
 .table>tbody>tr>td, .table>thead>tr>th {
-  padding-top: 0;
-  padding-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.concordance span.pos1 {
+    color: #A4422A;
+    font-weight: bold;
+}
+
+.concordance span.pos2 {
+    color: #24A479;
+    font-weight: bold;
 }

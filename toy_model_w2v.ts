@@ -26,7 +26,7 @@ class Word2vecConfig extends ModelConfig {
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
   train_overview_fields: string[] = ['instances', 'epochs', 'learning_rate'];
   default_query_in: string[] = ['looked'];
-  default_query_out: string[] = [];
+  default_query_out: string[] = ['G_listened','B_struck','B_obstinacy'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
   report_interval_microseconds: number = 250;
 };
@@ -102,6 +102,8 @@ export class Word2vec implements ToyModel {
   breakpoint_iterations = -1;
   breakpoint_time = -1;
 
+  train_instance_log_map: {[query:string]: TrainInstanceLog[]} = {};
+
   constructor(model_config: {}) {
     this.state = new Word2vecState();
     this.state.config = new Word2vecConfig();  // with default parameters
@@ -176,6 +178,11 @@ export class Word2vec implements ToyModel {
       case 'pair_profile':
         let query = <string>request['query'];
         return this.get_pair_profile(query);
+
+      case 'influential_train_instances':
+        let w1 = <string>request['w1'];
+        let w2 = <string>request['w2'];
+        return this.get_influential_train_instances(w1, w2);
 
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
@@ -555,12 +562,6 @@ export class Word2vec implements ToyModel {
   // 4. find element-wise product of X and Y
   // 5. find nearest neighbors shared by X and Y (like pair-profiling...)
   // 6. find per-dim nearest neighbors of element-wise product of X and Y
-  // --- (remaining tasks)
-  // 7. find concordance of training instance of (X, Z) and (Y, Z)
-  // 8. find break-down of a specific training instance to show its learning
-  // rate and contribution (the contribution can be zeroed out if subsampled,
-  // etc.)
-  // 9. show PCA of all watched items (including the query term).
   private get_pair_profile(query: string): PairProfile {
     let state = this.state;
     let config = state.config;
@@ -632,6 +633,38 @@ export class Word2vec implements ToyModel {
       return {idx: i, score: score};
     };
     let elemsum_scores = $.map(this.index2word, cosine_with_elemsum);
+
+
+    // Rank and filter words by co-co-occurrence (only applicable to the situation
+    // where the query is a watched word).
+    if (query in this.train_instance_log_map) {
+      // For each word in vocab, count how many times it co-occurs with query_in
+      // (i.e., words in q_idx_set) := C1, and how many times it co-occurs with
+      // query_out := C2. Score them by C1 * C2, and retain the top N for
+      // subsequent analysis.
+      let C1 = [];  // [word_idx] = count
+      let C2 = [];  // [word_idx] = count
+      for (let i = 0; i < this.state.vocab_size; i++) {
+        C1.push(0);
+        C2.push(0);
+      }
+      for (let qidx in this.q_idx_set) {
+        let q = this.index2word[qidx];
+        if (! (q in this.train_instance_log_map)) continue;
+        for (let log of this.train_instance_log_map[q]) {
+          C1[this.vocab[log.word2].idx] += log.movement;
+        }
+      }
+      for (let log of this.train_instance_log_map[query]) {
+        C2[this.vocab[log.word2].idx] += log.movement;
+      }
+      let C12 = C1.map((x,i)=>{return {score:(x * C2[i]), idx:i}});
+      C12.sort((a,b)=>(b.score-a.score));
+      elemsum_scores = C12
+          .slice(0, RANK_TO_CONSIDER_FOR_PERDIM)
+          .map(x => elemsum_scores[x.idx]);
+    }
+
     elemsum_scores.sort((a,b) => b.score - a.score);
     let elemsum_neighbors = $.map(
           elemsum_scores.slice(0, RANK_TO_SHOW),
@@ -721,7 +754,26 @@ export class Word2vec implements ToyModel {
           if (pos2 != pos) {
             let idx2 = this.vocab[word2].idx;
             if (idx1 != idx2) {
-              this.train_sg_pair(idx1, idx2);
+              // Actually train it.
+              let movement = this.train_sg_pair(idx1, idx2);
+
+              // Log this training instance.
+              if (word2 in this.queries_watched || idx2 in this.q_idx_set) {
+                let train_instance_log: TrainInstanceLog = {
+                  word: word2,
+                  word2: word,
+                  sentence_id: this.state.sentences,
+                  epoch_id: this.state.epochs,
+                  pos: pos2,
+                  pos2: pos,
+                  learning_rate: this.state.learning_rate,
+                  movement: movement
+                }
+                if (! (word2 in this.train_instance_log_map)) {
+                  this.train_instance_log_map[word2] = [];
+                }
+                this.train_instance_log_map[word2].push(train_instance_log);
+              }
             }
           }
         });
@@ -794,6 +846,7 @@ export class Word2vec implements ToyModel {
       for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
     }
     for (let j = 0; j < config.hidden_size; j++) l1[j] += neu1e[j];
+    return getL2Norm(neu1e);  // how much the context_idx's vector moves.
   }
 
   private train_cbow_pair(w_idx: number, context_idxs: number[], l1: number[]) {
@@ -828,6 +881,59 @@ export class Word2vec implements ToyModel {
       for (let j = 0; j < config.hidden_size; j++) l2[j] += g * l1[j];
     }
     for (let a of context_idxs) for (let j = 0; j < config.hidden_size; j++) syn0[a][j] += neu1e[j];
+  }
+
+  private get_influential_train_instances(w1:string, w2:string): TrainInstanceSummary[] {
+    if (! (w1 in this.train_instance_log_map)) return [];
+    let train_instances = this
+        .train_instance_log_map[w1]
+        .filter(d=>(d.word2 == w2));
+
+    // group by sentence_id
+    let by_sentence: {[sentence_id: number]: {[epoch_id: number]: TrainInstanceLog}} = {};
+    for (let instance of train_instances) {
+      if (!(instance.sentence_id in by_sentence)) {
+        by_sentence[instance.sentence_id] = [];
+      }
+      by_sentence[instance.sentence_id][instance.epoch_id] = instance;
+    }
+
+    // Create TrainInstanceSummary per sentence_id
+    let summaries: TrainInstanceSummary[] = [];
+    for (let sentence_id_ in by_sentence) {
+      let sentence_id = parseInt(sentence_id_);
+      let sentence = this.sentences[sentence_id];
+      let learning_rates = [];
+      let movements = [];
+      let total_movement = 0;
+      let pos = -1;
+      let pos2 = -1;
+      for (let i = 0; i < this.state.epochs; i++) {
+        let learning_rate = 0;
+        let movement = 0;
+        if (i in by_sentence[sentence_id_]) {
+          let instance = by_sentence[sentence_id_][i];
+          learning_rate = instance.learning_rate;
+          movement = instance.movement;
+          pos = instance.pos;
+          pos2 = instance.pos2;
+        }
+        learning_rates.push(learning_rate);
+        movements.push(movement);
+        total_movement += movement;
+      }
+      summaries.push({
+        total_movement: total_movement,
+        sentence: sentence,
+        sentence_id: sentence_id,
+        pos: pos,
+        pos2: pos2,
+        learning_rates: learning_rates,
+        movements: movements
+      });
+    }
+    summaries.sort((a, b) => b.total_movement - a.total_movement);
+    return summaries.slice(RANK_TO_SHOW);
   }
 }
 
@@ -883,4 +989,27 @@ function getNormalizedVec(vec: number[]): number[] {
   let l2norm = getL2Norm(vec);
   if (l2norm == 0) return vec;
   return vec.map(v=>v/l2norm);
+}
+
+// Used for internal logging
+interface TrainInstanceLog {
+  word: string;
+  word2: string;
+  sentence_id: number;
+  epoch_id: number;
+  pos: number;
+  pos2: number;
+  learning_rate: number;
+  movement: number;
+}
+
+// Used to communicate with frontend
+export interface TrainInstanceSummary {
+  total_movement: number;
+  sentence: string;
+  sentence_id: number;
+  pos: number;
+  pos2: number;
+  learning_rates: number[];
+  movements: number[];
 }
