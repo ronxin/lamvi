@@ -161,3 +161,26 @@ textarea {
     color: #24A479;
     font-weight: bold;
 }
+
+.concordance tbody > tr,
+#hidden-product-container tbody > tr {
+    cursor: pointer;
+}
+
+.bar-chart .bar {
+    fill: #517fa4;
+}
+
+.bar-chart .bar:hover {
+    fill: #A4422A;
+}
+
+.bar-chart .axis path,
+.bar-chart .axis line {
+    fill: none;
+    stroke: #000;
+}
+
+.bar-chart .x.axis path {
+    display: none;
+}

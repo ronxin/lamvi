@@ -27,7 +27,8 @@ import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
 import {Word2vecState, PairProfile, TrainInstanceSummary} from "./toy_model_w2v";
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
-import * as icons from "./icons.ts";
+import * as icons from "./icons";
+import drawBarChart from "./barchart";
 
 let ui_state: UIState;
 let ui_state_hidden: UIStateHidden;
@@ -760,6 +761,14 @@ function display_concordance(tbody: d3.Selection<any>, data: TrainInstanceSummar
     .append('span')
     .attr('class', d=>d['cls'])
     .text(d=>d['w']);
+
+  rows.on('click', d=>{
+    $('#instance-inspector-container').show();
+    let svg1 = d3.select('#instance-inspector-container svg.left');
+    let svg2 = d3.select('#instance-inspector-container svg.right');
+    drawBarChart(svg1, d.learning_rates, 'Epochs');
+    drawBarChart(svg2, d.movements, 'Epochs');
+  });
 }
 
 window.addEventListener('hashchange', () => {
