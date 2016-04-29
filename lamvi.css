@@ -184,3 +184,15 @@ textarea {
 .bar-chart .x.axis path {
     display: none;
 }
+
+.scatterplot g.QUERY_IN {
+    fill: #517fa4;
+}
+
+.scatterplot g.GOOD {
+    fill: #24A479;
+}
+
+.scatterplot g.BAD {
+    fill: #A4422A;
+}

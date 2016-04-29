@@ -1,3 +1,5 @@
+/// <reference path="pca.d.ts" />
+
 import {ModelConfig, ModelState, QueryOutRecord} from "./model_state";
 import {ToyModel} from "./toy_model";
 import * as util from "./util";
@@ -104,6 +106,8 @@ export class Word2vec implements ToyModel {
 
   train_instance_log_map: {[query:string]: TrainInstanceLog[]} = {};
 
+  principal_components: any;
+
   constructor(model_config: {}) {
     this.state = new Word2vecState();
     this.state.config = new Word2vecConfig();  // with default parameters
@@ -155,6 +159,7 @@ export class Word2vec implements ToyModel {
       case 'update_query_out_result':
         this.update_qi_and_qo(request);
         this.compute_query_result();
+        this.update_PCA();
         return this.get_state();
 
       case 'train':
@@ -183,6 +188,13 @@ export class Word2vec implements ToyModel {
         let w1 = <string>request['w1'];
         let w2 = <string>request['w2'];
         return this.get_influential_train_instances(w1, w2);
+
+      case 'reset_pca':
+        this.update_PCA();
+        return {};
+
+      case 'scatterplot':
+        return this.get_2D_vecs();
 
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
@@ -936,6 +948,54 @@ export class Word2vec implements ToyModel {
     summaries.sort((a, b) => b.total_movement - a.total_movement);
     return summaries.slice(0, RANK_TO_SHOW);
   }
+
+  /*
+  Updates PCA model using current watched terms.
+  PCA implemented in pca.js
+  */
+  private update_PCA() {
+    let matrix = this.get_PCA_matrix();
+    if (matrix.length == 0) return;
+    let pca = new PCA();
+    let matrixNormalized = pca.scale(matrix, true, true);
+    this.principal_components = pca.pca(matrixNormalized);
+  }
+
+  private get_2D_vecs() {
+    let pc0 = this.principal_components[0];
+    let pc1 = this.principal_components[1];
+    let vectorProjections = [];
+    for (let q_idx in this.q_idx_set) {
+      let row = this.syn0[q_idx];
+      let proj0 = dotProduct(pc0, row);
+      let proj1 = dotProduct(pc1, row);
+      vectorProjections.push({
+        proj0: proj0,
+        proj1: proj1,
+        word: this.index2word[q_idx],
+        type: 'QUERY_IN'
+      });
+    }
+    for (let record of this.state.query_out_records) {
+      let word = record.query;
+      let idx = this.vocab[word].idx;
+      if (idx in this.q_idx_set) continue;
+      let row = this.syn0[idx];
+      let proj0 = dotProduct(pc0, row);
+      let proj1 = dotProduct(pc1, row);
+      vectorProjections.push({
+        proj0: proj0,
+        proj1: proj1,
+        word: word,
+        type: this.qo_map[this.qi_key][word].status
+      });
+    }
+    return vectorProjections;
+  }
+
+  private get_PCA_matrix() {
+    return this.syn0.slice(0,this.state.config.hidden_size+1);
+  }
 }
 
 // http://stackoverflow.com/questions/9229645/
@@ -990,6 +1050,17 @@ function getNormalizedVec(vec: number[]): number[] {
   let l2norm = getL2Norm(vec);
   if (l2norm == 0) return vec;
   return vec.map(v=>v/l2norm);
+}
+
+function dotProduct(vec1, vec2) {
+  if (vec1.length != vec2.length) {
+    throw new Error('dimension mismatch.');
+  }
+  let out = 0;
+  for (let i = 0; i < vec1.length; i++) {
+    out += vec1[i] * vec2[i];
+  }
+  return out;
 }
 
 // Used for internal logging

@@ -166,6 +166,7 @@ function handleModelState() {
       }
       updateQueryOutSVG();
       updateHiddenIn();
+      updateScatterPlot();
       break
 
     case 'AUTO_BREAK':
@@ -173,6 +174,7 @@ function handleModelState() {
       display_training_status_overview();
       updateQueryOutSVG();
       updateHiddenIn();
+      updateScatterPlot();
       break;
 
     case 'USER_BREAK':
@@ -180,6 +182,7 @@ function handleModelState() {
       display_training_status_overview();
       updateQueryOutSVG();
       updateHiddenIn();
+      updateScatterPlot();
       break;
 
     default:
@@ -769,6 +772,78 @@ function display_concordance(tbody: d3.Selection<any>, data: TrainInstanceSummar
     drawBarChart(svg1, d.learning_rates, 'Epochs');
     drawBarChart(svg2, d.movements, 'Epochs');
   });
+}
+
+function updateScatterPlot() {
+  sendRequestToBackend('scatterplot', {}, updateScatterPlotSvg);
+}
+
+let vecRenderScale: number;
+function updateScatterPlotSvg(vectorProjections) {
+  let scatter_svg = d3.select('#pca-container svg')
+  const scatter_svg_width = 1000;
+  const scatter_svg_height = 700;
+  // Clear up SVG
+  scatter_svg.selectAll("*").remove();
+
+  // Add grid line
+  var vecRenderBaseX = scatter_svg_width / 2;
+  var vecRenderBaseY = scatter_svg_height / 2;
+  scatter_svg.append("line")
+    .classed("grid-line", true)
+    .attr("x1", 0)
+    .attr("x2", scatter_svg_width)
+    .attr("y1", vecRenderBaseY)
+    .attr("y2", vecRenderBaseY);
+  scatter_svg.append("line")
+    .classed("grid-line", true)
+    .attr("x1", vecRenderBaseX)
+    .attr("x2", vecRenderBaseX)
+    .attr("y1", 0)
+    .attr("y2", scatter_svg_height);
+  scatter_svg.selectAll(".grid-line")
+    .style("stroke", "grey")
+    .style("stroke-dasharray", ("30,3"))
+    .style("stroke-width", 2)
+    .style("stroke-opacity", 0.75);
+
+  var scatter_groups = scatter_svg
+    .selectAll("g.scatterplot-vector")
+    .data(vectorProjections)
+    .enter()
+    .append("g")
+    .attr('class', d=>d['type'])
+    .classed("scatterplot-vector", true);
+
+  scatter_groups
+    .append("circle")
+    //.attr("x", function (d) {return d['proj0']*1000+500})
+    //.attr("y", function (d) {return d['proj1']*1000+500})
+    .attr("r", 10)
+    .attr("stroke-width", "2")
+    .attr("stroke", "grey");
+
+  scatter_groups
+    .append("text")
+    .attr("dx", "6")
+    .attr("dy", "-0.25em")
+    .attr("alignment-baseline", "ideographic")
+    .style("font-size", 28)
+    .text(function(d) {return d['word']});
+
+  // Calculate a proper scale
+  vecRenderScale = 9999999999;  // global
+  vectorProjections.forEach(function(v) {
+    vecRenderScale = Math.min(vecRenderScale, 0.4 * scatter_svg_width / Math.abs(v['proj0']));
+    vecRenderScale = Math.min(vecRenderScale, 0.45 * scatter_svg_height / Math.abs(v['proj1']));
+  });
+
+  scatter_groups
+    .attr("transform", function(d) {
+      var x = d['proj0'] * vecRenderScale + vecRenderBaseX;
+      var y = d['proj1'] * vecRenderScale + vecRenderBaseY;
+      return "translate(" + x + ',' + y +")";
+    });
 }
 
 window.addEventListener('hashchange', () => {
