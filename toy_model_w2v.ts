@@ -25,8 +25,8 @@ class Word2vecConfig extends ModelConfig {
   iter: number = 20;
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
   train_overview_fields: string[] = ['instances', 'epochs', 'learning_rate'];
-  default_query_in: string[] = ['looked'];
-  default_query_out: string[] = ['G_listened','B_struck','B_obstinacy'];
+  default_query_in: string[] = ['darcy'];
+  default_query_out: string[] = ['G_bennet','B_circumstances'];
   train_corpus_url: string = "/pg1342-tokenized.txt";
   report_interval_microseconds: number = 250;
 };
@@ -645,24 +645,25 @@ export class Word2vec implements ToyModel {
       let C1 = [];  // [word_idx] = count
       let C2 = [];  // [word_idx] = count
       for (let i = 0; i < this.state.vocab_size; i++) {
-        C1.push(0);
-        C2.push(0);
+        C1.push(1);
+        C2.push(1);
       }
       for (let qidx in this.q_idx_set) {
         let q = this.index2word[qidx];
         if (! (q in this.train_instance_log_map)) continue;
         for (let log of this.train_instance_log_map[q]) {
-          C1[this.vocab[log.word2].idx] += log.movement;
+          C1[this.vocab[log.word2].idx]++;
         }
       }
       for (let log of this.train_instance_log_map[query]) {
-        C2[this.vocab[log.word2].idx] += log.movement;
+        C2[this.vocab[log.word2].idx]++;
       }
       let C12 = C1.map((x,i)=>{return {score:(x * C2[i]), idx:i}});
       C12.sort((a,b)=>(b.score-a.score));
-      elemsum_scores = C12
-          .slice(0, RANK_TO_CONSIDER_FOR_PERDIM)
-          .map(x => elemsum_scores[x.idx]);
+      let C12_filtered = C12
+          .filter(x => x.score > 1)
+          .slice(0, RANK_TO_CONSIDER_FOR_PERDIM);
+      elemsum_scores = C12_filtered.map(x => elemsum_scores[x.idx]);
     }
 
     elemsum_scores.sort((a,b) => b.score - a.score);
@@ -933,7 +934,7 @@ export class Word2vec implements ToyModel {
       });
     }
     summaries.sort((a, b) => b.total_movement - a.total_movement);
-    return summaries.slice(RANK_TO_SHOW);
+    return summaries.slice(0, RANK_TO_SHOW);
   }
 }
 
