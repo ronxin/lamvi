@@ -9,6 +9,9 @@ const CUM_TABLE_DOMAIN = 2147483647;  // 2^31 - 1
 const MAX_EXP = 6;
 const EXP_TABLE_SIZE = 1000;
 
+const RANK_TO_SHOW = 10;
+const RANK_TO_CONSIDER_FOR_PERDIM = 100;
+
 class Word2vecConfig extends ModelConfig {
   hidden_size: number = 16;
   alpha: number = 0.1;
@@ -23,7 +26,7 @@ class Word2vecConfig extends ModelConfig {
   data_overview_fields: string[] = ['vocab_size', 'num_sentences', 'corpus_size'];
   train_overview_fields: string[] = ['instances', 'epochs', 'learning_rate'];
   default_query_in: string[] = ['looked'];
-  default_query_out: string[] = ['W_listened'];
+  default_query_out: string[] = [];
   train_corpus_url: string = "/pg1342-tokenized.txt";
   report_interval_microseconds: number = 250;
 };
@@ -41,7 +44,17 @@ export class Word2vecState extends ModelState {
   full_model_name = 'Word2Vec';
 
   qi_vec: number[];
-  per_dimension: QueryOutRecord[][];  // [dim][rank] = {query, score}
+  per_dim_neighbors: QueryOutRecord[][];  // [dim][rank] = {query, score}
+}
+
+export interface PairProfile {
+  qo: string;
+  qo_vec: number[];
+  qo_neighbors: QueryOutRecord[];  // {query, score}
+  qo_per_dim_neighbors: QueryOutRecord[][];  // [dim][rank] = {query, score}
+  elemprod: number[];
+  elemsum_neighbors: {query: string, score1: number, score2: number}[];
+  elemsum_per_dim_neighbors: {query: string, score1: number, score2: number}[][];
 }
 
 class VocabItem {
@@ -68,19 +81,20 @@ export class Word2vec implements ToyModel {
 
   query_in: string[] = [];
   qi_key: string;  // hash key for query_in
+  q_idx_set: {[q_idx:number]:boolean};
   queries_watched: {[q:string]: boolean} = {};
   queries_ignored: {[q:string]: boolean} = {};
   qo_map: {[qi_key: string]: {[qo: string]: QueryOutRecord}} = {};
+  scores: number[];
+  qi_scores_unsorted: ScoredItem[];
+  qi_scores: ScoredItem[];
+  qi_vec: number[];
+  l2_sqrts: number[];
 
   syn0: number[][];
   syn1: number[][];
   cum_table: number[];  // cumultative distribution table for negative sampling.
   exp_table: number[];
-
-  // Some cached arrays that should be initialized only once to potentially save
-  // some time.
-  scores: number[];
-  qi_vec: number[];
 
   // Training status tracker
   count_instances_watched = 0;  // number of seen instances of watched queries
@@ -158,6 +172,10 @@ export class Word2vec implements ToyModel {
         this.breakpoint_time = Date.now() + this.state.config.report_interval_microseconds;
         this.train_until_breakpoint();
         return this.get_state();
+
+      case 'pair_profile':
+        let query = <string>request['query'];
+        return this.get_pair_profile(query);
 
       default:
         throw new Error('Unrecognized request type: "' + request_type + '"');
@@ -257,8 +275,10 @@ export class Word2vec implements ToyModel {
     this.syn1 = syn1;
 
     this.scores = [];
+    this.l2_sqrts = [];
     this.qi_vec = [];
     for (let i = 0; i < vocab_size; i++)  this.scores.push(0);
+    for (let i = 0; i < vocab_size; i++)  this.l2_sqrts.push(0);
     for (let j = 0; j < hidden_size; j++)  this.qi_vec.push(0);
 
     this.state.instances = 0;
@@ -394,10 +414,12 @@ export class Word2vec implements ToyModel {
     let iterations = this.state.instances;
     let qo_lookup = this.qo_map[this.qi_key];
     let queries_watched = this.queries_watched;
+    this.q_idx_set = {};
+    let q_idx_set = this.q_idx_set;
+    let l2_sqrts = this.l2_sqrts;
 
     // Update qi_vec
     for (let j = 0; j < hidden_size; j++)  qi_vec[j] = 0;
-    let q_idx_set: {[q_idx: number]: boolean} = {};
     for (let q of query_in) {
       let word = q;
       let minus = false;
@@ -421,7 +443,6 @@ export class Word2vec implements ToyModel {
     }
 
     // Compute scores
-    let l2_sqrts: number[] = [];
     for (let i = 0; i < vocab_size; i++) {
       if (i in q_idx_set) {
         scores[i] = 0;  // (query words have a score of 0)
@@ -434,27 +455,25 @@ export class Word2vec implements ToyModel {
          l2 += syn0[i][j] * syn0[i][j];
       }
       let l2_sqrt = Math.sqrt(l2);
-      l2_sqrts.push(l2_sqrt);
+      l2_sqrts[i] = l2_sqrt;
       if (l2 == 0) scores[i] = 0;
       else scores[i] = prod / l2_sqrt;
     }
 
     // Get ranking
-    interface ScoredItem {
-      idx: number;
-      score: number;
-      rank?: number;
-    }
-    let item_scores: ScoredItem[] = $.map(scores, (score, i) => {return {idx: i, score: score}});
-    item_scores.sort((a,b) => b.score - a.score);
-    $.map(item_scores, (item_score, i) => {item_score.rank = i});
+    let qi_scores_unsorted: ScoredItem[] = $.map(scores, (score, i) => {return {idx: i, score: score}});
+    let qi_scores = qi_scores_unsorted.slice().sort((a,b) => b.score - a.score);
+    $.map(qi_scores, (item_score, i) => {item_score.rank = i});
     let rank_lookup: {[watched_item:string]: number} = {};
-    for (let item_score of item_scores) {
+    for (let item_score of qi_scores) {
       let word = this.index2word[item_score.idx];
       if (word in queries_watched) {
         rank_lookup[word] = item_score.rank;
       }
     }
+
+    this.qi_scores_unsorted = qi_scores_unsorted;
+    this.qi_scores = qi_scores;
 
     // Update ranking history for the following three types of items
     // 1. top N ranked items
@@ -465,7 +484,7 @@ export class Word2vec implements ToyModel {
     // as other watched items have already been created in qo_map).
     let query_out_records: QueryOutRecord[] = [];
     let ranks_to_show: number[] = [];
-    for (let i = 0; i < 10; i++) ranks_to_show.push(i);
+    for (let i = 0; i < RANK_TO_SHOW; i++) ranks_to_show.push(i);
     for (let word of Object.keys(queries_watched)) {
       if (! (word in rank_lookup)) continue;
       if (vocab[word].idx in q_idx_set) continue;
@@ -478,11 +497,11 @@ export class Word2vec implements ToyModel {
       // }
     }
     ranks_to_show = uniq_fast(ranks_to_show)
-      .filter(rank => !(this.index2word[item_scores[rank].idx] in this.queries_ignored))
-      .filter(rank => !(item_scores[rank].idx in q_idx_set))
+      .filter(rank => !(this.index2word[qi_scores[rank].idx] in this.queries_ignored))
+      .filter(rank => !(qi_scores[rank].idx in q_idx_set))
       .sort();
     for (let rank of ranks_to_show) {
-      let item_score = item_scores[rank];
+      let item_score = qi_scores[rank];
       let word = this.index2word[item_score.idx];
       let score = item_score.score;
       if (!(word in qo_lookup)) {
@@ -509,11 +528,11 @@ export class Word2vec implements ToyModel {
 
     // Among the top-N ranked result, for each dimension of the vector, re-rank
     // by how excited they are.
-    let item_scores_topN = item_scores.slice(0, 100);
-    this.state.per_dimension = [];
+    let qi_scores_topN = qi_scores.slice(0, RANK_TO_CONSIDER_FOR_PERDIM);
+    this.state.per_dim_neighbors = [];
     for (let j = 0; j < hidden_size; j++) {
       let reranked_items: QueryOutRecord[] = $
-          .map(item_scores_topN,
+          .map(qi_scores_topN,
                x => {
                  let score = 0;
                  if (l2_sqrts[x.idx] > 0) {
@@ -524,9 +543,137 @@ export class Word2vec implements ToyModel {
                   score: score};
                })
           .sort((a,b)=>b.score-a.score)
-          .slice(0, 10);
-       this.state.per_dimension.push(reranked_items);
+          .slice(0, RANK_TO_SHOW);
+       this.state.per_dim_neighbors.push(reranked_items);
     }
+  }
+
+  // Given an arbitrary query, do the following:
+  // 1. find its vector (syn0 normalized)
+  // 2. find its nearest neighbors
+  // 3. find its per-dim nearest neighbors (for hover effects)
+  // 4. find element-wise product of X and Y
+  // 5. find nearest neighbors shared by X and Y (like pair-profiling...)
+  // 6. find per-dim nearest neighbors of element-wise product of X and Y
+  // --- (remaining tasks)
+  // 7. find concordance of training instance of (X, Z) and (Y, Z)
+  // 8. find break-down of a specific training instance to show its learning
+  // rate and contribution (the contribution can be zeroed out if subsampled,
+  // etc.)
+  // 9. show PCA of all watched items (including the query term).
+  private get_pair_profile(query: string): PairProfile {
+    let state = this.state;
+    let config = state.config;
+    let hidden_size = config.hidden_size;
+    let syn0 = this.syn0;
+    let l2_sqrts = this.l2_sqrts;
+
+    let qi_vec = this.qi_vec;
+    let qo_idx = this.vocab[query].idx;
+    let qo_vec_raw = syn0[qo_idx];  // unnormalized
+    let qo_vec = $.map(qo_vec_raw, x=>x / l2_sqrts[qo_idx]);  // normalized
+
+    let cosine_with_qo = (w: string, i: number): ScoredItem => {
+      let score = 0;
+      if (i != qo_idx) {
+        let prod = 0;
+        for (let j = 0; j < hidden_size; j++) {
+          prod += qo_vec[j] * syn0[i][j];
+        }
+        if (l2_sqrts[i] > 0) {
+          score = prod / l2_sqrts[i];
+        }
+      }
+      return {idx: i, score: score};
+    };
+    let qo_scores_unsorted = $.map(this.index2word, cosine_with_qo);
+    let qo_scores = qo_scores_unsorted.slice().sort((a,b) => b.score - a.score);
+    let qo_neighbors = $.map(
+          qo_scores.slice(0, RANK_TO_SHOW),
+          item => {return {query: this.index2word[item.idx], score: item.score}});
+
+    let qo_scores_topN = qo_scores.slice(0, RANK_TO_CONSIDER_FOR_PERDIM);
+    let qo_per_dim_neighbors = [];
+    for (let j = 0; j < hidden_size; j++) {
+      let reranked_items: QueryOutRecord[] = $
+        .map(
+          qo_scores_topN,
+          x => {
+            let score = 0;
+            if (l2_sqrts[x.idx] > 0) {
+              score = qo_vec[j] * syn0[x.idx][j] / l2_sqrts[x.idx];
+            }
+            return {
+              query: this.index2word[x.idx],
+              score: score
+            };
+          }
+        )
+        .sort((a,b) => b.score - a.score)
+        .slice(0, RANK_TO_SHOW);
+      qo_per_dim_neighbors.push(reranked_items);
+    }
+
+    let elemprod_vec = qi_vec.map((v,i) => v * qo_vec[i]);  // X .* Y
+    let elemsum_vec = qi_vec.map((v,i) => v + qo_vec[i]);  // X + Y
+    elemsum_vec = getNormalizedVec(elemsum_vec);
+
+    let cosine_with_elemsum = (w: string, i: number): ScoredItem => {
+      let score = 0;
+      if (i != qo_idx && ! (i in this.q_idx_set)) {
+        let prod = 0;
+        for (let j = 0; j < hidden_size; j++) {
+          prod += elemsum_vec[j] * syn0[i][j];
+        }
+        if (l2_sqrts[i] > 0) {
+          score = prod / l2_sqrts[i];
+        }
+      }
+      return {idx: i, score: score};
+    };
+    let elemsum_scores = $.map(this.index2word, cosine_with_elemsum);
+    elemsum_scores.sort((a,b) => b.score - a.score);
+    let elemsum_neighbors = $.map(
+          elemsum_scores.slice(0, RANK_TO_SHOW),
+          item => {return {query: this.index2word[item.idx],
+                           score1: this.qi_scores_unsorted[item.idx].score,
+                           score2: qo_scores_unsorted[item.idx].score}});
+
+    let elemsum_scores_topN = elemsum_scores.slice(0, RANK_TO_CONSIDER_FOR_PERDIM);
+    let elemsum_per_dim_neighbors = [];
+    for (let j = 0; j < hidden_size; j++) {
+      let reranked_items: QueryOutRecord[] = $
+        .map(
+          elemsum_scores_topN,
+          x => {
+            let score1 = 0;
+            let score2 = 0;
+            if (l2_sqrts[x.idx] > 0) {
+              score1 = qi_vec[j] * syn0[x.idx][j] / l2_sqrts[x.idx];
+              score2 = qo_vec[j] * syn0[x.idx][j] / l2_sqrts[x.idx];
+            }
+            return {
+              query: this.index2word[x.idx],
+              score1: score1,
+              score2: score2
+            };
+          }
+        )
+        .sort((a,b) => b.score1 + b.score2 - a.score1 - a.score2)
+        .slice(0, RANK_TO_SHOW);
+      elemsum_per_dim_neighbors.push(reranked_items);
+    }
+
+    let out: PairProfile = {
+      qo: query,
+      qo_vec: qo_vec,
+      qo_neighbors: qo_neighbors,
+      qo_per_dim_neighbors: qo_per_dim_neighbors,
+      elemprod: elemprod_vec,
+      elemsum_neighbors: elemsum_neighbors,
+      elemsum_per_dim_neighbors: elemsum_per_dim_neighbors
+    };
+    return out;
   }
 
   private train_until_breakpoint() {
@@ -716,4 +863,24 @@ function bSearch(xs: number[], x: number): number {
         if (0 < c) top = mid;
     }
     return bot;
+}
+
+interface ScoredItem {
+      idx: number;
+      score: number;
+      rank?: number;
+}
+
+function getL2Norm(vec: number[]) {
+  let sum = 0;
+  for (let v of vec) {
+    sum += v * v;
+  }
+  return Math.sqrt(sum);
+}
+
+function getNormalizedVec(vec: number[]): number[] {
+  let l2norm = getL2Norm(vec);
+  if (l2norm == 0) return vec;
+  return vec.map(v=>v/l2norm);
 }

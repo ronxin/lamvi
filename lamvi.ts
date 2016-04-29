@@ -24,7 +24,7 @@ limitations under the License.
 
 import {UIState, UIStateHidden} from "./ui_state";
 import {ModelState, ModelConfig, QueryOutRecord} from './model_state';
-import {Word2vecState} from "./toy_model_w2v";
+import {Word2vecState, PairProfile} from "./toy_model_w2v";
 import handleRequest from "./toy_model_entry";
 import * as util from "./util";
 import * as icons from "./icons.ts";
@@ -474,7 +474,6 @@ function updateQueryOutSVG() {
     .append('g')
     .attr('class', d => `qo-item ${d.status}`);
 
-
   // Draw marker on index bar
   record_objs.append('rect')
     .attr('x', 0)
@@ -605,6 +604,10 @@ function updateQueryOutSVG() {
     'delay': 300
   });
   $('.tooltip').remove();
+
+  record_objs.on('click', d => {
+    sendRequestToBackend('pair_profile', {query: d.query}, display_pair_profile);
+  });
 }
 
 function batch_train(iterations: number, watched: boolean): void {
@@ -632,17 +635,17 @@ function updateHiddenIn(): void {
   let w2v_model_state = <Word2vecState>model_state;
   let tbody = d3.select('#hidden-in-container tbody');
   let default_records = w2v_model_state.query_out_records;
-  let per_dim_records = w2v_model_state.per_dimension;
+  let per_dim_records = w2v_model_state.per_dim_neighbors;
   d3.select('#hidden-in-container .query')
     .html('&nbsp; - "' + ui_state.query_in.join('" "') + '"');
 
-  updateHeatMap(svg, w2v_model_state.qi_vec, default_records, per_dim_records, tbody);
-  updateInspectorTBody(tbody, default_records);
+  updateHeatMap(svg, w2v_model_state.qi_vec, default_records, per_dim_records, tbody, false);
+  updateInspectorTBody(tbody, default_records, false);
 }
 
 function updateHeatMap(svg: d3.Selection<any>, vector: number[],
     default_records: QueryOutRecord[], per_dim_records: QueryOutRecord[][],
-    tbody: d3.Selection<any>): void {
+    tbody: d3.Selection<any>, is_pair: boolean): void {
   const hmap_svg_width = 100;
   const hmap_svg_height = 100;
   let ncol = Math.floor(Math.sqrt(vector.length));
@@ -663,18 +666,52 @@ function updateHeatMap(svg: d3.Selection<any>, vector: number[],
     .attr('width', cellFillWidth)
     .attr('height', cellFillHeight)
     .style('fill', d => {return util.exciteValueToColor(d)})
-    .on('mouseover', (d,i)=>{updateInspectorTBody(tbody, per_dim_records[i])})
-    .on('mouseout', ()=>{updateInspectorTBody(tbody, default_records)});
+    .on('mouseover', (d,i)=>{updateInspectorTBody(tbody, per_dim_records[i], is_pair)})
+    .on('mouseout', ()=>{updateInspectorTBody(tbody, default_records, is_pair)});
 }
 
-function updateInspectorTBody(tbody: d3.Selection<any>, ranked_items: QueryOutRecord[]): void {
+function updateInspectorTBody(
+    tbody: d3.Selection<any>,
+    ranked_items: {query:string, score?:number, score1?:number, score2?:number}[],
+    is_pair: boolean): void {
   tbody.selectAll('*').remove();
   let rows = tbody.selectAll('tr')
     .data(ranked_items.slice(0, 8))
     .enter()
     .append('tr');
   rows.append('td').html(d=>d.query);
-  rows.append('td').html(d=>(''+d.score).slice(0, 5));
+  if (is_pair) {
+    rows.append('td').html(d=>(''+d.score1).slice(0, 5));
+    rows.append('td').html(d=>(''+d.score2).slice(0, 5));
+  } else {
+    rows.append('td').html(d=>(''+d.score).slice(0, 5));
+  }
+}
+
+function display_pair_profile(response:{}): void {
+  $('#hidden-out-container').show();
+  $('#hidden-product-container').show();
+
+  let svg_out = d3.select('#hidden-out-container svg');
+  let tbody_out = d3.select('#hidden-out-container tbody');
+  let svg_prod = d3.select('#hidden-product-container svg');
+  let tbody_prod = d3.select('#hidden-product-container tbody');
+
+  let w2v_model_state = <Word2vecState>model_state;
+  let pair_profile = <PairProfile>response;
+
+  let default_records_out = pair_profile.qo_neighbors;
+  let per_dim_records_out = pair_profile.qo_per_dim_neighbors;
+  d3.select('#hidden-out-container .query')
+    .html('&nbsp; - "' + pair_profile.qo + '"');
+  updateHeatMap(svg_out, pair_profile.qo_vec, default_records_out, per_dim_records_out, tbody_out, false);
+  updateInspectorTBody(tbody_out, default_records_out, false);
+
+  let default_records_prod = pair_profile.elemsum_neighbors;
+  let per_dim_records_prod = pair_profile.elemsum_per_dim_neighbors;
+  console.log(pair_profile);
+  updateHeatMap(svg_prod, pair_profile.elemprod, default_records_prod, per_dim_records_prod, tbody_prod, true);
+  updateInspectorTBody(tbody_prod, default_records_prod, true);
 }
 
 window.addEventListener('hashchange', () => {

@@ -110,6 +110,7 @@ textarea {
 
 .qo-item {
     fill: #eee;
+    cursor: pointer;
 }
 
 .qo-item text {
