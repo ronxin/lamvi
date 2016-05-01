@@ -110,6 +110,8 @@ function reset() {
     let qo = $('#query-out-search').val();
     searchQueryOut(qo);
   });
+
+  addColorBar();
 }
 
 function showError(message: string) {
@@ -635,7 +637,7 @@ function resume_training(): void {
 
 // word2vec only
 function updateHiddenIn(): void {
-  let svg = d3.select('#hidden-in-container svg');
+  let svg = d3.select('#hidden-in-container svg.heatmap');
   let w2v_model_state = <Word2vecState>model_state;
   let tbody = d3.select('#hidden-in-container tbody');
   let default_records = w2v_model_state.query_out_records;
@@ -713,9 +715,9 @@ function display_pair_profile(response:{}): void {
   $('#hidden-out-container').show();
   $('#hidden-product-container').show();
 
-  let svg_out = d3.select('#hidden-out-container svg');
+  let svg_out = d3.select('#hidden-out-container svg.heatmap');
   let tbody_out = d3.select('#hidden-out-container tbody');
-  let svg_prod = d3.select('#hidden-product-container svg');
+  let svg_prod = d3.select('#hidden-product-container svg.heatmap');
   let tbody_prod = d3.select('#hidden-product-container tbody');
 
   let w2v_model_state = <Word2vecState>model_state;
@@ -844,6 +846,43 @@ function updateScatterPlotSvg(vectorProjections) {
       var y = d['proj1'] * vecRenderScale + vecRenderBaseY;
       return "translate(" + x + ',' + y +")";
     });
+}
+
+function addColorBar() {
+  const hmap_svg_width = 25;  // view box, not physical
+  const hmap_svg_height = 200;
+  let hmap_svg = d3.selectAll('svg.colorbar');
+
+  var tmpArray = [];
+  for (var i = -1; i < 1; i += 0.03) {
+    tmpArray.push(i);
+  }
+
+  var yScale = d3.scale.linear()
+    .domain([0, tmpArray.length - 1])
+    .range([hmap_svg_height-15, 15]);
+
+  hmap_svg.selectAll("rect")
+    .data(tmpArray)
+    .enter()
+    .append("rect")
+    .attr("y", (d,i) => yScale(i))
+    .attr("x", hmap_svg_width / 5)
+    .attr("height", hmap_svg_height / tmpArray.length * 1.2)
+    .attr("width", hmap_svg_width / 3)
+    .style("fill", function(d) {return util.exciteValueToColor(d)});
+
+  hmap_svg.append('text')
+    .text('+1')
+    .attr('x', 0)
+    .attr('y', 0)
+    .attr('alignment-baseline', 'hanging');
+
+  hmap_svg.append('text')
+    .text('-1')
+    .attr('x', 0)
+    .attr('y', hmap_svg_height)
+    .attr('alignment-baseline', 'alphabetic');
 }
 
 window.addEventListener('hashchange', () => {
