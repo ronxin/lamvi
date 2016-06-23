@@ -1,2 +1,3 @@
 # Language model visual inspector
-Under construction.
+
+[Live Demo](https://ronxin.github.io/wevi/dist)

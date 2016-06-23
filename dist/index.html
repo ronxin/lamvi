@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <link href="bundle.css" rel="stylesheet">
+  <title>lamvi - Language Model Visual Inspector</title>
+  <script src="lib.js"></script>
+</head>
+<body>
+  <header>
+    <h1>lamvi - Language Model Visual Inspector</h1>
+  </header>
+
+  <div hidden class="alert alert-danger top-error-banner"></div>
+  <div class="body-main">
+    <div class="column config">
+      <div>
+        <label>Config:</label>
+        <textarea rows="5" id="config-text">{}</textarea>
+        <button class="btn btn-primary" id="btn-update-restart">Update and Restart</button>
+      </div>
+
+      <div>
+        <label>Training Data <br>(First 1000 characters):</label>
+        <div><a id="train-corpus-link" target="_blank" hidden>View Full Text</a></div>
+        <textarea rows="5" id="train-text" readonly></textarea>
+      </div>
+
+      <div>
+        <label>Training Data Overview:</label>
+        <div class="info-box" id="train-data-overview"></div>
+      </div>
+
+      <!--<div>
+        <label>Model Snapshots:</label>
+        <p><select></select></p>
+      </div>-->
+
+      <hr>
+
+      <div>
+        <div><label>Control</label></div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-success" id="btn-start-pause">Start</button>
+          <button type="button" class="btn btn-success" id="btn-next">Next</button>
+          <button type="button" class="btn btn-success" id="btn-reset">Reset</button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div>
+        <div><label>Training Status</label></div>
+        <div id="training-status"></div>
+        <div class="info-box" id="train-status-overview"></div>
+      </div>
+    </div>
+
+    <div class="column inspect">
+      <div><label>Model Inspection</label><span id="model-type"></span></div>
+
+      <div class="info-box" id="hidden-in-container">
+        <div><label>Vector X</label><span class="query"></span></div>
+        <div style="width:5%; float:left">
+          <svg class="colorbar" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 25 200"></svg>
+        </div>
+        <div style="width:40%; float:left">
+          <svg class="heatmap" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 100 100"></svg>
+        </div>
+        <div style="width:55%; float:left">
+          <table class="table">
+            <thead><tr><th>Word</th><th>Similarity</th></tr></thead>
+            <tbody><tr><td>A</td><td>B</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="info-box" id="hidden-out-container" hidden>
+        <div><label>Vector Y</label><span class="query"></span></div>
+        <div style="width:5%; float:left">
+          <svg class="colorbar" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 25 200"></svg>
+        </div>
+        <div style="width:40%; float:left">
+          <svg class="heatmap" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 100 100"></svg>
+        </div>
+        <div style="width:55%; float:left">
+          <table class="table">
+            <thead><tr><th>Word</th><th>Similarity</th></tr></thead>
+            <tbody><tr><td>A</td><td>B</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="info-box" id="hidden-product-container" hidden>
+        <div><label>X .* Y</label><span class="query"></span></div>
+        <div style="width:5%; float:left">
+          <svg class="colorbar" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 25 200"></svg>
+        </div>
+        <div style="width:40%; float:left">
+          <svg class="heatmap" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 100 100"></svg>
+        </div>
+        <div style="width:55%; float:left">
+          <table class="table">
+            <thead><tr><th>Word</th><th>Sim_X</th><th>Sim_Y</th></tr></thead>
+            <tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="info-box concordance" id="concordance-container" hidden>
+        <div><label>Training instances</label><span class="query"></span></div>
+        <div>
+          <table class="table">
+            <thead><tr><th>Contribution</th><th>Sentence</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="info-box concordance" id="concordance-container-2" hidden>
+        <div><label>Training instances</label><span class="query"></span></div>
+        <div>
+          <table class="table">
+            <thead><tr><th>Contribution</th><th>Sentence</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="info-box" id="instance-inspector-container" hidden>
+        <div style="width:50%; float:left">
+          <div style="text-align: center"><label>Learning Rate</label></div>
+          <svg class="left bar-chart" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 300 300"></svg>
+        </div>
+        <div style="width:50%; float:left">
+          <div style="text-align: center"><label>Contributions</label></div>
+          <svg class="right bar-chart" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 300 300"></svg>
+        </div>
+      </div>
+
+      <div class="info-box" id="pca-container">
+        <div><label>PCA</label></div>
+        <svg class="scatterplot" width="100%" preserveAspectRatio="xMinYMin meet" viewBox="0 0 1000 700"></svg>
+      </div>
+    </div>
+
+    <div class="column query">
+      <div class="info-box">
+        <div><label class="query-box-label">Query:</label></div>
+        <div id="query-in-error-message" hidden class="alert alert-danger"></div>
+        <div id="query-in-container"></div>
+      </div>
+
+      <!-- display high-perplexity queries -->
+      <!--<div class="info-box">
+        <div><label>Suggested Queries:</label></div>
+        <div style="height: 100px; background: pink;">TODO</div>
+      </div>-->
+
+      <div class="info-box">
+        <div><label>Outputs:</label></div>
+        <div>
+          <div id="query-out-error-message" hidden class="alert alert-danger"></div>
+          <input id="query-out-search"></input>&nbsp;&nbsp;
+          <button class="btn btn-success" id="btn-add-to-watchlist">Add to Watchlist</button>
+        </div>
+        <br>
+        <div id="query-out-container"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundle.js"></script>
+</body>
+</html>
