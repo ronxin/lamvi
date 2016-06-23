@@ -29,7 +29,7 @@ class Word2vecConfig extends ModelConfig {
   train_overview_fields: string[] = ['instances', 'epochs', 'learning_rate'];
   default_query_in: string[] = ['darcy'];
   default_query_out: string[] = ['G_bennet','B_circumstances'];
-  train_corpus_url: string = "/pg1342-tokenized.txt";
+  train_corpus_url: string = "pg1342-tokenized.txt";
   report_interval_microseconds: number = 250;
 };
 
